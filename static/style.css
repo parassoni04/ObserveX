@@ -1204,3 +1204,126 @@ th.sort-desc .sort-indicator::after {
         grid-template-columns: 1fr;
     }
 }
+
+/* Power & Battery Custom Elements */
+.battery-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.battery-level-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.battery-icon-container {
+    display: flex;
+    align-items: center;
+}
+
+.battery-icon {
+    width: 42px;
+    height: 22px;
+    border: 2px solid var(--text-secondary);
+    border-radius: 4px;
+    position: relative;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+}
+
+.battery-icon::after {
+    content: "";
+    position: absolute;
+    right: -5px;
+    top: 4px;
+    width: 3px;
+    height: 10px;
+    background-color: var(--text-secondary);
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+.battery-fill {
+    height: 100%;
+    background-color: var(--accent-green);
+    border-radius: 1px;
+    transition: width 0.5s ease;
+}
+
+.battery-fill.warning-charge {
+    background-color: var(--accent-yellow);
+}
+
+.battery-fill.low-charge {
+    background-color: var(--accent-red);
+    animation: battery-low-pulse 1.5s infinite ease-in-out;
+}
+
+.charging-lightning {
+    position: absolute;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    color: #ffeb3b;
+    filter: drop-shadow(0 0 4px rgba(255, 235, 59, 0.8));
+    animation: lightning-flash 1.5s infinite ease-in-out;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.value-display.scale-display .number {
+    font-size: 28px !important;
+}
+
+.battery-details-row {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.battery-details-row strong {
+    color: var(--text-secondary);
+    margin-left: 4px;
+}
+
+.power-watts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-top: 14px;
+    border-top: 1px solid var(--card-border);
+    padding-top: 12px;
+}
+
+.watt-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.watt-item .label {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.watt-item strong {
+    font-size: 14px;
+    font-family: var(--font-heading);
+    color: var(--text-primary);
+}
+
+/* Animations */
+@keyframes battery-low-pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+@keyframes lightning-flash {
+    0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(0.9); }
+    50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+}
+

@@ -585,6 +585,46 @@ function updateDashboardDOM(data) {
     document.getElementById('net-down-val').textContent = formatBytesRate(data.net_download_speed);
     document.getElementById('net-total-sent').textContent = formatBytes(data.net_bytes_sent);
     document.getElementById('net-total-recv').textContent = formatBytes(data.net_bytes_received);
+
+    // 6. Power & Battery Card DOM updates
+    const bBadge = document.getElementById('battery-status-badge');
+    const bFill = document.getElementById('battery-fill-bar');
+    const bCharging = document.getElementById('battery-charging-icon');
+    const bPercent = document.getElementById('battery-percent-val');
+    const bTimeLabel = document.getElementById('battery-time-label');
+    const bTimeVal = document.getElementById('battery-time-val');
+
+    bBadge.textContent = data.battery_plugged ? "Charging" : "Discharging";
+    bPercent.textContent = data.battery_percent;
+    bFill.style.width = data.battery_percent + '%';
+    
+    // Status colors for battery fill
+    bFill.classList.remove('low-charge', 'warning-charge');
+    if (data.battery_percent <= 15) {
+        bFill.classList.add('low-charge');
+    } else if (data.battery_percent <= 40) {
+        bFill.classList.add('warning-charge');
+    }
+
+    if (data.battery_plugged) {
+        bCharging.style.display = 'flex';
+        bTimeLabel.textContent = "Status:";
+        bTimeVal.textContent = data.battery_time_left;
+        document.getElementById('watt-adapter-container').style.display = 'flex';
+    } else {
+        bCharging.style.display = 'none';
+        bTimeLabel.textContent = "Remaining:";
+        bTimeVal.textContent = `${data.battery_time_left} (Active: ${data.battery_time_used})`;
+        document.getElementById('watt-adapter-container').style.display = 'none';
+    }
+
+    document.getElementById('watt-total-val').textContent = data.power_total_w.toFixed(1) + ' W';
+    document.getElementById('watt-cpu-val').textContent = data.power_cpu_w.toFixed(1) + ' W';
+    document.getElementById('watt-gpu-val').textContent = data.power_gpu_w.toFixed(1) + ' W';
+    document.getElementById('watt-charging-val').textContent = data.power_charging_w.toFixed(1) + ' W';
+    
+    // Update card border styles based on battery levels
+    setCardWarning('power-battery-card', !data.battery_plugged && data.battery_percent <= 30, !data.battery_plugged && data.battery_percent <= 15);
 }
 
 // Evaluate limits and trigger browser alerts
@@ -635,6 +675,11 @@ function evaluateWarningThresholds(data) {
     if (!data.network_connected) {
         alert('network', `Local Network adapter disconnected. No internet access.`, 'warning');
     }
+
+    // Battery low status
+    if (!data.battery_plugged && data.battery_percent <= 15) {
+        alert('battery', `Low battery warning! Level is at ${data.battery_percent}%. Connect your power adapter.`, 'critical');
+    }
 }
 
 // Custom Toast notification widget helper
@@ -676,7 +721,7 @@ function initCharts() {
     const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
     const labelColor = isDark ? '#8b9bb4' : '#536279';
     
-    const chartOptions = (yMax = null, isSpeed = false) => ({
+    const chartOptions = (yMax = null, formatType = 'percent') => ({
         responsive: true,
         maintainAspectRatio: false,
         animation: { duration: 0 }, // Disable animations for real-time scrolling speed
@@ -697,10 +742,13 @@ function initCharts() {
                 ticks: {
                     color: labelColor,
                     callback: function(value) {
-                        if (isSpeed) {
+                        if (formatType === 'speed') {
                             if (value >= 1024**2) return (value / (1024**2)).toFixed(0) + ' MB/s';
                             if (value >= 1024) return (value / 1024).toFixed(0) + ' KB/s';
                             return value + ' B/s';
+                        }
+                        if (formatType === 'watts') {
+                            return value.toFixed(0) + ' W';
                         }
                         return value + '%';
                     }
@@ -782,7 +830,7 @@ function initCharts() {
                 }
             ]
         },
-        options: chartOptions(null, true)
+        options: chartOptions(null, 'speed')
     });
 
     // 4. Disk Chart
@@ -806,13 +854,43 @@ function initCharts() {
                 }
             ]
         },
-        options: chartOptions(null, true)
+        options: chartOptions(null, 'speed')
+    });
+
+    // 5. Power Chart
+    const ctx5 = document.getElementById('powerChart').getContext('2d');
+    charts.power = new Chart(ctx5, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Total System',
+                    data: Array(maxChartPoints).fill(0),
+                    borderColor: '#ffaa00',
+                    fill: false
+                },
+                {
+                    label: 'CPU Package',
+                    data: Array(maxChartPoints).fill(0),
+                    borderColor: '#0088ff',
+                    fill: false
+                },
+                {
+                    label: 'GPU Core',
+                    data: Array(maxChartPoints).fill(0),
+                    borderColor: '#e040fb',
+                    fill: false
+                }
+            ]
+        },
+        options: chartOptions(null, 'watts')
     });
 }
 
 function updateDashboardCharts(data) {
     if (state.activeView !== 'dashboard') return;
-    if (!charts.cpuMem || !charts.gpu || !charts.network || !charts.disk) return;
+    if (!charts.cpuMem || !charts.gpu || !charts.network || !charts.disk || !charts.power) return;
     
     const updateLineData = (chartInstance, datasetIndex, newValue) => {
         const dataset = chartInstance.data.datasets[datasetIndex].data;
@@ -838,6 +916,12 @@ function updateDashboardCharts(data) {
     updateLineData(charts.disk, 0, data.disk_read_speed);
     updateLineData(charts.disk, 1, data.disk_write_speed);
     charts.disk.update('none');
+
+    // Laptop Power Draw (Watts)
+    updateLineData(charts.power, 0, data.power_total_w);
+    updateLineData(charts.power, 1, data.power_cpu_w);
+    updateLineData(charts.power, 2, data.power_gpu_w);
+    charts.power.update('none');
 }
 
 // Processes Monitor REST Poller and Render

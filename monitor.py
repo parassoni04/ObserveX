@@ -322,6 +322,8 @@ class SystemMonitor:
             if len(parts) >= 7:
                 try:
                     gpu_power = float(parts[6])
+                    if gpu_power > 150.0:  # Clamp Optimus GPU sleep state bug (reports ~590W)
+                        gpu_power = 0.0
                 except Exception:
                     gpu_power = 0.0
                 return {

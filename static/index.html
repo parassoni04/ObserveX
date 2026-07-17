@@ -227,6 +227,54 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- Power & Battery Card -->
+                    <div class="metric-card glass-panel" id="power-battery-card">
+                        <div class="card-head">
+                            <h3>Power & Battery</h3>
+                            <span class="badge" id="battery-status-badge">Discharging</span>
+                        </div>
+                        <div class="card-body gauge-body">
+                            <div class="battery-container">
+                                <div class="battery-level-row">
+                                    <div class="battery-icon-container">
+                                        <div class="battery-icon">
+                                            <div class="battery-fill" id="battery-fill-bar" style="width: 0%"></div>
+                                            <div class="charging-lightning" id="battery-charging-icon" style="display: none;">
+                                                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" stroke="currentColor" stroke-width="0"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="value-display scale-display">
+                                        <span class="number" id="battery-percent-val">0</span><span class="unit">%</span>
+                                    </div>
+                                </div>
+                                <div class="battery-details-row">
+                                    <span id="battery-time-label">Remaining:</span>
+                                    <strong id="battery-time-val">--</strong>
+                                </div>
+                            </div>
+                            
+                            <div class="power-watts-grid">
+                                <div class="watt-item">
+                                    <span class="label">Total Draw:</span>
+                                    <strong id="watt-total-val">0.0 W</strong>
+                                </div>
+                                <div class="watt-item">
+                                    <span class="label">CPU Draw:</span>
+                                    <strong id="watt-cpu-val">0.0 W</strong>
+                                </div>
+                                <div class="watt-item">
+                                    <span class="label">GPU Draw:</span>
+                                    <strong id="watt-gpu-val">0.0 W</strong>
+                                </div>
+                                <div class="watt-item" id="watt-adapter-container">
+                                    <span class="label">Charger:</span>
+                                    <strong id="watt-charging-val">0.0 W</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Charts Container Grid -->
@@ -261,6 +309,14 @@
                         </div>
                         <div class="chart-body">
                             <canvas id="diskChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-container glass-panel">
+                        <div class="chart-header">
+                            <h4>Laptop Power Draw (Watts)</h4>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="powerChart"></canvas>
                         </div>
                     </div>
                 </div>
