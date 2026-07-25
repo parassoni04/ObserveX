@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ObserveX - Local System Monitor</title>
+    <title>ObserveX - System Monitor</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,7 +30,26 @@
                 </div>
                 <div class="logo-text">
                     <h1>Observe<span>X</span></h1>
-                    <span class="version-label">v1.0.0</span>
+                    <span class="version-label">v2.0.0</span>
+                </div>
+            </div>
+
+            <!-- Device Selector -->
+            <div class="device-selector-wrapper">
+                <label class="device-selector-label">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                        <line x1="8" y1="21" x2="16" y2="21"/>
+                        <line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                    Device
+                </label>
+                <select id="device-selector" class="device-selector">
+                    <option value="local">Local Machine</option>
+                </select>
+                <div class="device-status-indicator" id="device-status-dot">
+                    <span class="status-dot online"></span>
+                    <span class="status-text" id="device-status-text">Online</span>
                 </div>
             </div>
 
@@ -79,6 +98,15 @@
                         <polyline points="10 9 9 9 8 9" />
                     </svg>
                     <span>Windows Event Logs</span>
+                </a>
+                <a href="#" class="nav-link" data-view="devices">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                        <line x1="8" y1="21" x2="16" y2="21"/>
+                        <line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                    <span>Devices</span>
                 </a>
                 <a href="#" class="nav-link" data-view="settings">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
@@ -748,6 +776,16 @@
                     <button class="pagination-btn" id="event-prev-page" disabled>&laquo; Prev</button>
                     <span class="pagination-info" id="event-page-info">Page 1 of 1</span>
                     <button class="pagination-btn" id="event-next-page" disabled>Next &raquo;</button>
+                </div>
+            </section>
+
+            <!-- Devices View -->
+            <section id="view-devices" class="content-view">
+                <div class="devices-grid" id="devices-grid">
+                    <div class="loading-cell">
+                        <div class="spinner"></div>
+                        <span>Loading registered devices...</span>
+                    </div>
                 </div>
             </section>
 

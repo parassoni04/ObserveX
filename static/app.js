@@ -7,6 +7,11 @@ const state = {
     startupEnabled: false,
     chartsInitialized: false,
     
+    // Multi-device mode
+    mode: 'local',           // 'local' (standalone) or 'centralized' (server)
+    devices: [],             // List of registered devices
+    selectedDeviceId: null,  // Currently viewed device ID
+    
     // Live metrics cache
     metrics: {},
     
@@ -59,10 +64,7 @@ let charts = {};
 const maxChartPoints = 30;
 
 // Initialize app when DOM is fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-    // Start server heartbeat loop immediately to prevent backend shutdown
-    startHeartbeatLoop();
-    
+document.addEventListener('DOMContentLoaded', async () => {
     try {
         loadSettingsFromStorage();
     } catch (e) {
@@ -80,18 +82,20 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
         console.error("Error initializing event listeners:", e);
     }
-    
 
-    try {
-        connectWebSocket();
-    } catch (e) {
-        console.error("Error connecting websocket:", e);
-    }
-    
-    try {
-        fetchHardwareSpecs();
-    } catch (e) {
-        console.error("Error fetching hardware specs:", e);
+    // Detect mode: check if centralized server API is available
+    await detectMode();
+
+    if (state.mode === 'local') {
+        // Legacy standalone mode
+        startHeartbeatLoop();
+        try { connectWebSocket(); } catch (e) { console.error("Error connecting websocket:", e); }
+        try { fetchHardwareSpecs(); } catch (e) { console.error("Error fetching hardware specs:", e); }
+        try { syncStartupSetting(); } catch (e) { console.error("Error syncing startup setting:", e); }
+    } else {
+        // Centralized multi-device mode
+        await fetchDeviceList();
+        connectDashboardWebSocket();
     }
     
     try {
@@ -99,13 +103,179 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
         console.error("Error refreshing view:", e);
     }
-    
-    try {
-        syncStartupSetting();
-    } catch (e) {
-        console.error("Error syncing startup setting:", e);
-    }
 });
+
+// ── Mode Detection ──
+async function detectMode() {
+    try {
+        const res = await fetch('/api/v1/devices', { signal: AbortSignal.timeout(2000) });
+        if (res.ok) {
+            state.mode = 'centralized';
+            console.log('ObserveX: Centralized server mode detected.');
+            return;
+        }
+    } catch (e) {
+        // Centralized API not available
+    }
+    state.mode = 'local';
+    console.log('ObserveX: Standalone local mode.');
+}
+
+// ── Device Management ──
+async function fetchDeviceList() {
+    try {
+        const res = await fetch('/api/v1/devices');
+        const devices = await res.json();
+        state.devices = devices;
+        updateDeviceSelector();
+        renderDevicesView();
+        
+        // Auto-select first device if none selected
+        if (!state.selectedDeviceId && devices.length > 0) {
+            selectDevice(devices[0].id);
+        }
+    } catch (e) {
+        console.error('Error fetching device list:', e);
+    }
+}
+
+function updateDeviceSelector() {
+    const sel = document.getElementById('device-selector');
+    if (!sel) return;
+    
+    sel.innerHTML = '';
+    if (state.mode === 'local') {
+        sel.innerHTML = '<option value="local">Local Machine</option>';
+        return;
+    }
+    
+    if (state.devices.length === 0) {
+        sel.innerHTML = '<option value="">No devices registered</option>';
+        return;
+    }
+    
+    state.devices.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = `${d.hostname} ${d.is_online ? '●' : '○'}`;
+        if (d.id === state.selectedDeviceId) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
+function selectDevice(deviceId) {
+    const prevId = state.selectedDeviceId;
+    state.selectedDeviceId = parseInt(deviceId);
+    
+    // Update status indicator
+    const device = state.devices.find(d => d.id === state.selectedDeviceId);
+    const dot = document.querySelector('#device-status-dot .status-dot');
+    const text = document.getElementById('device-status-text');
+    if (device && dot && text) {
+        dot.className = `status-dot ${device.is_online ? 'online' : 'offline'}`;
+        text.textContent = device.is_online ? 'Online' : 'Offline';
+    }
+    
+    // Reset cached data for new device
+    state.apps = [];
+    state.events = [];
+    state.processes = [];
+    charts = {};
+    
+    // Resubscribe WebSocket
+    if (dashboardWs && dashboardWs.readyState === WebSocket.OPEN) {
+        if (prevId) {
+            dashboardWs.send(JSON.stringify({ action: 'unsubscribe', device_id: prevId }));
+        }
+        dashboardWs.send(JSON.stringify({ action: 'subscribe', device_id: state.selectedDeviceId }));
+    }
+    
+    // Reload current view data
+    fetchHardwareSpecs();
+    refreshViewContent();
+}
+
+function renderDevicesView() {
+    const grid = document.getElementById('devices-grid');
+    if (!grid) return;
+    
+    if (state.devices.length === 0) {
+        grid.innerHTML = `
+            <div class="no-devices-message">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                    <line x1="8" y1="21" x2="16" y2="21"/>
+                    <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+                <h3>No Devices Registered</h3>
+                <p>Start the ObserveX agent on a Windows machine to register it with this server. Devices will appear here automatically.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    grid.innerHTML = state.devices.map(d => {
+        const statusClass = d.is_online ? 'online' : 'offline';
+        const lastSeen = d.last_seen ? new Date(d.last_seen).toLocaleString() : 'Never';
+        const registered = d.registered_at ? new Date(d.registered_at).toLocaleDateString() : 'Unknown';
+        
+        return `
+            <div class="device-card ${statusClass}" data-device-id="${d.id}">
+                <div class="device-card-header">
+                    <div class="device-card-name">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                            <line x1="8" y1="21" x2="16" y2="21"/>
+                            <line x1="12" y1="17" x2="12" y2="21"/>
+                        </svg>
+                        ${escapeHtml(d.hostname)}
+                    </div>
+                    <span class="device-card-badge ${statusClass}">
+                        <span class="status-dot ${statusClass}"></span>
+                        ${d.is_online ? 'Online' : 'Offline'}
+                    </span>
+                </div>
+                <div class="device-card-meta">
+                    <div class="device-meta-item">
+                        <span class="device-meta-label">OS</span>
+                        <span class="device-meta-value">${escapeHtml(d.os_name || 'N/A')} ${escapeHtml(d.os_version || '').substring(0, 20)}</span>
+                    </div>
+                    <div class="device-meta-item">
+                        <span class="device-meta-label">Device ID</span>
+                        <span class="device-meta-value">#${d.id}</span>
+                    </div>
+                    <div class="device-meta-item">
+                        <span class="device-meta-label">Last Seen</span>
+                        <span class="device-meta-value">${lastSeen}</span>
+                    </div>
+                    <div class="device-meta-item">
+                        <span class="device-meta-label">Registered</span>
+                        <span class="device-meta-value">${registered}</span>
+                    </div>
+                </div>
+                <div class="device-card-actions">
+                    <button class="device-action-btn" onclick="selectDevice(${d.id}); switchView('dashboard');">View Dashboard</button>
+                    <button class="device-action-btn danger" onclick="removeDevice(${d.id})">Remove</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function removeDevice(deviceId) {
+    if (!confirm('Remove this device and all its historical data?')) return;
+    try {
+        const res = await fetch(`/api/v1/devices/${deviceId}`, { method: 'DELETE' });
+        if (res.ok) {
+            showToast('Device Removed', 'Device has been unregistered.', 'success');
+            await fetchDeviceList();
+        } else {
+            showToast('Error', 'Failed to remove device.', 'error');
+        }
+    } catch (e) {
+        showToast('Error', 'Network error removing device.', 'error');
+    }
+}
 
 // Load settings from LocalStorage
 function loadSettingsFromStorage() {
@@ -182,6 +352,17 @@ function initEventListeners() {
             switchView(view);
         });
     });
+    
+    // Device Selector
+    const deviceSelector = document.getElementById('device-selector');
+    if (deviceSelector) {
+        deviceSelector.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val && val !== 'local') {
+                selectDevice(parseInt(val));
+            }
+        });
+    }
     
     // Inner Software Tabs
     document.querySelectorAll('.inner-tab-btn').forEach(btn => {
@@ -445,6 +626,7 @@ function switchView(view) {
         hardware: ["Hardware Configuration", "Detailed specifications of installed motherboards, storage, and network adapters."],
         software: ["Software Inventory & Windows Updates", "List of installed applications and Windows patches catalog status."],
         events: ["Windows Event Viewer logs", "Scanning System and Application diagnostic events from Microsoft Event Logs."],
+        devices: ["Registered Devices", "All Windows agent machines reporting to this server."],
         settings: ["System Settings", "Configure indicators, warning thresholds, data rates, and autostart."]
     };
     
@@ -467,10 +649,14 @@ function refreshViewContent() {
         }
     } else if (state.activeView === 'events') {
         fetchEventLogs();
+    } else if (state.activeView === 'devices') {
+        if (state.mode === 'centralized') {
+            fetchDeviceList();
+        }
     }
 }
 
-// Heartbeat fetch query loop
+// Heartbeat fetch query loop (standalone mode only)
 function startHeartbeatLoop() {
     setInterval(async () => {
         try {
@@ -481,7 +667,7 @@ function startHeartbeatLoop() {
     }, 2000);
 }
 
-// Websocket Connection
+// ── Standalone WebSocket Connection (local mode) ──
 let ws = null;
 function connectWebSocket() {
     const loc = window.location;
@@ -490,7 +676,6 @@ function connectWebSocket() {
     
     ws.onopen = () => {
         console.log("WebSocket connected to live metrics server.");
-        // Set initial interval rate
         ws.send(JSON.stringify({ action: 'set_interval', value: state.refreshInterval }));
     };
     
@@ -514,6 +699,61 @@ function connectWebSocket() {
     ws.onerror = (err) => {
         console.error("WS error details:", err);
     };
+}
+
+// ── Centralized Dashboard WebSocket (multi-device mode) ──
+let dashboardWs = null;
+let devicePollInterval = null;
+
+function connectDashboardWebSocket() {
+    const loc = window.location;
+    const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${proto}//${loc.hostname}:${loc.port}/ws/v1/dashboard`;
+    dashboardWs = new WebSocket(wsUrl);
+    
+    dashboardWs.onopen = () => {
+        console.log('Dashboard WebSocket connected.');
+        // Subscribe to selected device
+        if (state.selectedDeviceId) {
+            dashboardWs.send(JSON.stringify({ action: 'subscribe', device_id: state.selectedDeviceId }));
+        }
+    };
+    
+    dashboardWs.onmessage = (event) => {
+        try {
+            const msg = JSON.parse(event.data);
+            
+            if (msg.type === 'metrics' && msg.device_id === state.selectedDeviceId) {
+                state.metrics = msg.data;
+                updateDashboardDOM(msg.data);
+                updateDashboardCharts(msg.data);
+                evaluateWarningThresholds(msg.data);
+            } else if (msg.type === 'processes' && msg.device_id === state.selectedDeviceId) {
+                state.processes = msg.data || [];
+                renderProcesses();
+            } else if (msg.type === 'events' && msg.device_id === state.selectedDeviceId) {
+                state.events = msg.data || [];
+                renderEventLogs();
+            }
+        } catch (e) {
+            console.error('Dashboard WS parse error:', e);
+        }
+    };
+    
+    dashboardWs.onclose = () => {
+        console.log('Dashboard WebSocket closed. Reconnecting in 3s...');
+        setTimeout(connectDashboardWebSocket, 3000);
+    };
+    
+    dashboardWs.onerror = (err) => {
+        console.error('Dashboard WS error:', err);
+    };
+    
+    // Periodically refresh device list to update online/offline status
+    if (devicePollInterval) clearInterval(devicePollInterval);
+    devicePollInterval = setInterval(async () => {
+        await fetchDeviceList();
+    }, 15000);
 }
 
 // CPU, RAM, Disk rates formatter helper
@@ -1050,6 +1290,21 @@ function pollProcesses() {
     // Clear old loop
     if (processIntervalId) clearInterval(processIntervalId);
     
+    if (state.mode === 'centralized') {
+        // In centralized mode, request processes via dashboard WS
+        if (dashboardWs && dashboardWs.readyState === WebSocket.OPEN && state.selectedDeviceId) {
+            dashboardWs.send(JSON.stringify({ action: 'get_processes', device_id: state.selectedDeviceId }));
+        }
+        // Poll via WS every 3 seconds
+        processIntervalId = setInterval(() => {
+            if (state.activeView !== 'processes') { clearInterval(processIntervalId); return; }
+            if (dashboardWs && dashboardWs.readyState === WebSocket.OPEN && state.selectedDeviceId) {
+                dashboardWs.send(JSON.stringify({ action: 'get_processes', device_id: state.selectedDeviceId }));
+            }
+        }, 3000);
+        return;
+    }
+    
     const query = async () => {
         if (state.activeView !== 'processes') {
             clearInterval(processIntervalId);
@@ -1138,18 +1393,23 @@ function renderProcesses() {
 // Fetch Static Hardware specs
 async function fetchHardwareSpecs() {
     try {
-        const res = await fetch('/api/static-info');
+        let url = '/api/static-info';
+        if (state.mode === 'centralized' && state.selectedDeviceId) {
+            url = `/api/v1/devices/${state.selectedDeviceId}/static-info`;
+        }
+        
+        const res = await fetch(url);
         const data = await res.json();
         
         // Cache node name for infrastructure overview
-        state.computerName = data.computer_name || 'ObserveXNode';
+        state.computerName = data.computer_name || data.hostname || 'ObserveXNode';
         
         // System Information
         document.getElementById('spec-pc-name').textContent = data.computer_name || 'N/A';
-        document.getElementById('spec-os-name').textContent = `${data.os_name} ${data.os_release}` || 'N/A';
+        document.getElementById('spec-os-name').textContent = `${data.os_name || ''} ${data.os_release || ''}`.trim() || 'N/A';
         document.getElementById('spec-os-version').textContent = data.os_version || 'N/A';
-        document.getElementById('spec-motherboard').textContent = `${data.motherboard_mfg} ${data.motherboard_product}` || 'N/A';
-        document.getElementById('spec-bios').textContent = `${data.bios_name} (v${data.bios_version})` || 'N/A';
+        document.getElementById('spec-motherboard').textContent = `${data.motherboard_mfg || ''} ${data.motherboard_product || ''}`.trim() || 'N/A';
+        document.getElementById('spec-bios').textContent = data.bios_name ? `${data.bios_name} (v${data.bios_version || ''})` : 'N/A';
         
         // Processor Specs
         document.getElementById('spec-cpu-model').textContent = data.cpu_model || 'N/A';
@@ -1207,8 +1467,10 @@ async function fetchHardwareSpecs() {
         }
         
         // Copy CPU details to card once
-        document.getElementById('cpu-cores').textContent = data.cpu_cores_logical;
-        document.getElementById('ram-usage-desc').textContent = `0 / ${data.total_ram_gb.toFixed(0)} GB`;
+        const cpuCoresEl = document.getElementById('cpu-cores');
+        if (cpuCoresEl) cpuCoresEl.textContent = data.cpu_cores_logical || 'N/A';
+        const ramDescEl = document.getElementById('ram-usage-desc');
+        if (ramDescEl && data.total_ram_gb) ramDescEl.textContent = `0 / ${data.total_ram_gb.toFixed(0)} GB`;
     } catch (e) {
         console.error("Error fetching hardware specs:", e);
     }
@@ -1223,12 +1485,16 @@ async function fetchInstalledApps() {
     }
     
     try {
-        const res = await fetch('/api/software');
+        let url = '/api/software';
+        if (state.mode === 'centralized' && state.selectedDeviceId) {
+            url = `/api/v1/devices/${state.selectedDeviceId}/software`;
+        }
+        const res = await fetch(url);
         const data = await res.json();
         state.apps = data;
         renderInstalledApps();
     } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="4" class="loading-cell">Error reading Installed Software from Windows registry: ${e}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" class="loading-cell">Error reading Installed Software: ${e}</td></tr>`;
     }
 }
 
@@ -1352,6 +1618,14 @@ async function fetchEventLogs() {
     const tbody = document.getElementById('event-table-body');
     if (state.events.length > 0) {
         renderEventLogs();
+        return;
+    }
+    
+    if (state.mode === 'centralized') {
+        // In centralized mode, request events via dashboard WS
+        if (dashboardWs && dashboardWs.readyState === WebSocket.OPEN && state.selectedDeviceId) {
+            dashboardWs.send(JSON.stringify({ action: 'get_events', device_id: state.selectedDeviceId }));
+        }
         return;
     }
     
