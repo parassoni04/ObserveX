@@ -2,9 +2,10 @@
 
 const state = {
     activeView: 'dashboard',
-    refreshInterval: 1.0, // seconds
+    refreshInterval: 0.2, // seconds
     theme: 'dark',
     startupEnabled: false,
+    chartsInitialized: false,
     
     // Live metrics cache
     metrics: {},
@@ -37,7 +38,9 @@ const state = {
     notificationsEnabled: true,
     limits: {
         cpu: 90,
+        cpuWarn: 55,
         ram: 90,
+        ramWarn: 65,
         disk: 10,
         cpu_temp: 85
     },
@@ -78,12 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error("Error initializing event listeners:", e);
     }
     
-    try {
-        initCharts();
-    } catch (e) {
-        console.error("Error initializing charts (possibly offline):", e);
-    }
-    
+
     try {
         connectWebSocket();
     } catch (e) {
@@ -123,7 +121,7 @@ function loadSettingsFromStorage() {
     const savedLimits = localStorage.getItem('observex_limits');
     if (savedLimits) {
         try {
-            state.limits = JSON.parse(savedLimits);
+            state.limits = { ...state.limits, ...JSON.parse(savedLimits) };
         } catch (e) {}
     }
     
@@ -138,8 +136,20 @@ function loadSettingsFromStorage() {
     document.getElementById('limit-cpu').value = state.limits.cpu;
     document.getElementById('limit-cpu-val').textContent = state.limits.cpu + '%';
     
+    const cpuWarnInput = document.getElementById('limit-cpu-warn');
+    if (cpuWarnInput) {
+        cpuWarnInput.value = state.limits.cpuWarn || 55;
+        document.getElementById('limit-cpu-warn-val').textContent = (state.limits.cpuWarn || 55) + '%';
+    }
+    
     document.getElementById('limit-ram').value = state.limits.ram;
     document.getElementById('limit-ram-val').textContent = state.limits.ram + '%';
+    
+    const ramWarnInput = document.getElementById('limit-ram-warn');
+    if (ramWarnInput) {
+        ramWarnInput.value = state.limits.ramWarn || 65;
+        document.getElementById('limit-ram-warn-val').textContent = (state.limits.ramWarn || 65) + '%';
+    }
     
     document.getElementById('limit-disk').value = state.limits.disk;
     document.getElementById('limit-disk-val').textContent = state.limits.disk + '%';
@@ -269,20 +279,12 @@ function initEventListeners() {
         });
     };
     bindThreshold('limit-cpu', 'limit-cpu-val', 'cpu');
+    bindThreshold('limit-cpu-warn', 'limit-cpu-warn-val', 'cpuWarn');
     bindThreshold('limit-ram', 'limit-ram-val', 'ram');
+    bindThreshold('limit-ram-warn', 'limit-ram-warn-val', 'ramWarn');
     bindThreshold('limit-disk', 'limit-disk-val', 'disk');
     
-    // Processes Search and Status Filtering
-    document.getElementById('process-search').addEventListener('input', (e) => {
-        state.procSearch = e.target.value.toLowerCase();
-        state.procPage = 1;
-        renderProcesses();
-    });
-    document.getElementById('process-filter-status').addEventListener('change', (e) => {
-        state.procStatusFilter = e.target.value;
-        state.procPage = 1;
-        renderProcesses();
-    });
+    // (Removed process search & status listeners as they are replaced by the 2x2 grid tables)
     
     // Sort columns click handling for process and software tables
     const setupSortHeader = (tableId, statePrefix, renderFunc) => {
@@ -309,7 +311,7 @@ function initEventListeners() {
             });
         });
     };
-    setupSortHeader('process-table', 'proc', renderProcesses);
+    // (Removed sort header call for process-table)
     setupSortHeader('apps-table', 'app', renderInstalledApps);
     
     // Installed Software Search
@@ -373,9 +375,29 @@ function initEventListeners() {
             renderFunc();
         });
     };
-    bindPagination('proc-prev-page', 'proc-next-page', 'proc', renderProcesses);
+    // (Removed process pagination bindings)
     bindPagination('apps-prev-page', 'apps-next-page', 'app', renderInstalledApps);
     bindPagination('event-prev-page', 'event-next-page', 'event', renderEventLogs);
+
+    // Power Detail toggle listener
+    const powerToggle = document.getElementById('power-detail-toggle');
+    if (powerToggle) {
+        const savedDetail = localStorage.getItem('observex_power_details');
+        const isChecked = savedDetail === 'true'; // default to false
+        powerToggle.checked = isChecked;
+        
+        document.querySelectorAll('.power-detail-item').forEach(el => {
+            el.style.display = isChecked ? 'block' : 'none';
+        });
+        
+        powerToggle.addEventListener('change', () => {
+            const checked = powerToggle.checked;
+            localStorage.setItem('observex_power_details', checked);
+            document.querySelectorAll('.power-detail-item').forEach(el => {
+                el.style.display = checked ? 'block' : 'none';
+            });
+        });
+    }
 }
 
 // Background checker for updates sync finish
@@ -534,15 +556,10 @@ function updateDashboardDOM(data) {
     
     if (state.activeView !== 'dashboard') return;
     
-    // 1. CPU
-    document.getElementById('cpu-percent-val').textContent = Math.round(data.cpu_usage);
-    document.getElementById('cpu-bar').style.width = data.cpu_usage + '%';
-    document.getElementById('cpu-freq').textContent = data.cpu_frequency;
-    document.getElementById('cpu-temp-val').textContent = data.cpu_temp;
-    
-    // Apply warning indicator colors to cards
+    // Warning indicator card borders helper
     const setCardWarning = (cardId, isWarning, isCritical) => {
         const card = document.getElementById(cardId);
+        if (!card) return;
         if (isCritical) {
             card.style.borderColor = 'rgba(var(--accent-red-rgb), 0.5)';
             card.style.boxShadow = '0 0 15px rgba(var(--accent-red-rgb), 0.15)';
@@ -554,77 +571,181 @@ function updateDashboardDOM(data) {
             card.style.boxShadow = '';
         }
     };
-    setCardWarning('cpu-card', data.cpu_usage > state.limits.cpu - 10, data.cpu_usage > state.limits.cpu);
+
+    // 0. Live Infrastructure Overview Bar (Tabular data binding matching Image 2/5)
+    const rawTime = data.current_time.split(' ')[1];
+    let formattedTime = rawTime || '--:--:-- --';
+    if (rawTime) {
+        const [hStr, mStr, sStr] = rawTime.split(':');
+        let h = parseInt(hStr);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12;
+        h = h ? h : 12;
+        const hh = h < 10 ? '0' + h : h;
+        formattedTime = `${hh}:${mStr}:${sStr} ${ampm}`;
+    }
+    document.getElementById('overview-time').textContent = formattedTime;
+    document.getElementById('overview-machine').textContent = state.computerName || 'ObserveXNode';
+    document.getElementById('overview-cpu').textContent = Math.round(data.cpu_usage) + '%';
+    document.getElementById('overview-mem').textContent = Math.round(data.ram_usage_percent) + '%';
+    document.getElementById('overview-disk-read').textContent = formatBytesRate(data.disk_read_speed);
+    document.getElementById('overview-disk-write').textContent = formatBytesRate(data.disk_write_speed);
+    document.getElementById('overview-net-sent').textContent = formatBytesRate(data.net_upload_speed);
+    document.getElementById('overview-net-recv').textContent = formatBytesRate(data.net_download_speed);
+
+    // 1. CPU Card (Three-tier warnings)
+    document.getElementById('cpu-percent-val').textContent = Math.round(data.cpu_usage);
+    document.getElementById('cpu-freq').textContent = data.cpu_frequency;
+    document.getElementById('cpu-temp-val').textContent = data.cpu_temp;
     
-    // 2. Memory
+    const cpuSubtitle = document.getElementById('cpu-status-subtitle');
+    const cpuCritical = data.cpu_usage > state.limits.cpu;
+    const cpuWarning = !cpuCritical && data.cpu_usage > (state.limits.cpuWarn || 55); // moderate load warning
+    
+    if (cpuCritical) {
+        cpuSubtitle.innerHTML = 'Status: <span class="status-crit">High Usage / Critical</span>';
+    } else if (cpuWarning) {
+        cpuSubtitle.innerHTML = 'Status: <span class="status-warn">Moderate Load / Warning</span>';
+    } else {
+        cpuSubtitle.innerHTML = 'Status: <span class="status-ok">Normal / Healthy</span>';
+    }
+    setCardWarning('cpu-card', cpuWarning, cpuCritical);
+    
+    // 2. Memory Card (Three-tier warnings)
     document.getElementById('ram-percent-val').textContent = Math.round(data.ram_usage_percent);
-    document.getElementById('ram-bar').style.width = data.ram_usage_percent + '%';
     document.getElementById('ram-usage-desc').textContent = `${data.ram_used_gb.toFixed(1)} / ${data.ram_total_gb.toFixed(0)} GB`;
     document.getElementById('ram-avail').textContent = `${data.ram_avail_gb.toFixed(1)} GB`;
-    setCardWarning('ram-card', data.ram_usage_percent > state.limits.ram - 10, data.ram_usage_percent > state.limits.ram);
     
-    // 3. GPU
-    document.getElementById('gpu-name').textContent = data.gpu_name;
+    const ramSubtitle = document.getElementById('ram-status-subtitle');
+    const ramCritical = data.ram_usage_percent > state.limits.ram;
+    const ramWarning = !ramCritical && data.ram_usage_percent > (state.limits.ramWarn || 65); // moderate load warning
+    
+    if (ramCritical) {
+        ramSubtitle.innerHTML = 'Status: <span class="status-crit">High Usage / Critical</span>';
+    } else if (ramWarning) {
+        ramSubtitle.innerHTML = 'Status: <span class="status-warn">Moderate Load / Warning</span>';
+    } else {
+        ramSubtitle.innerHTML = 'Status: <span class="status-ok">Normal / Healthy</span>';
+    }
+    setCardWarning('ram-card', ramWarning, ramCritical);
+    
+    // 3. GPU Card (Three-tier warnings)
     document.getElementById('gpu-percent-val').textContent = Math.round(data.gpu_usage);
-    document.getElementById('gpu-bar').style.width = data.gpu_usage + '%';
+    document.getElementById('gpu-name').textContent = data.gpu_name;
     document.getElementById('gpu-vram-val').textContent = `${data.gpu_memory_used.toFixed(0)} / ${data.gpu_memory_total.toFixed(0)} MB`;
     document.getElementById('gpu-temp-val').textContent = data.gpu_temp;
-    setCardWarning('gpu-card', data.gpu_usage > 85, data.gpu_usage > 95);
     
-    // 4. Storage Drive (C:)
+    const gpuSubtitle = document.getElementById('gpu-status-subtitle');
+    const gpuCritical = data.gpu_usage > 80;
+    const gpuWarning = !gpuCritical && data.gpu_usage > 45; // 45%-80% is moderate load warning
+    
+    if (gpuCritical) {
+        gpuSubtitle.innerHTML = 'Status: <span class="status-crit">High Load / Hot</span>';
+    } else if (gpuWarning) {
+        gpuSubtitle.innerHTML = 'Status: <span class="status-warn">Moderate Load / Warning</span>';
+    } else {
+        gpuSubtitle.innerHTML = 'Status: <span class="status-ok">Normal / Healthy</span>';
+    }
+    setCardWarning('gpu-card', gpuWarning, gpuCritical);
+    
+    // 4. Storage Card (Three-tier warnings)
     document.getElementById('disk-percent-val').textContent = Math.round(data.disk_usage_percent);
-    document.getElementById('disk-bar').style.width = data.disk_usage_percent + '%';
     document.getElementById('disk-free-val').textContent = `${data.disk_free_gb.toFixed(0)} GB`;
     document.getElementById('disk-used-val').textContent = `${data.disk_used_gb.toFixed(0)} GB`;
-    setCardWarning('disk-card', (100 - data.disk_usage_percent) < state.limits.disk + 5, (100 - data.disk_usage_percent) < state.limits.disk);
     
-    // 5. Speed elements
-    document.getElementById('disk-read-val').textContent = formatBytesRate(data.disk_read_speed);
-    document.getElementById('disk-write-val').textContent = formatBytesRate(data.disk_write_speed);
-    document.getElementById('net-up-val').textContent = formatBytesRate(data.net_upload_speed);
-    document.getElementById('net-down-val').textContent = formatBytesRate(data.net_download_speed);
+    const diskSubtitle = document.getElementById('disk-status-subtitle');
+    const freePercent = 100 - data.disk_usage_percent;
+    const diskCritical = freePercent < state.limits.disk;
+    const diskWarning = !diskCritical && freePercent < (state.limits.disk + 15); // Free space low margin warning
+    
+    if (diskCritical) {
+        diskSubtitle.innerHTML = 'Status: <span class="status-crit">Low Free Space</span>';
+    } else if (diskWarning) {
+        diskSubtitle.innerHTML = 'Status: <span class="status-warn">Moderate / Low Space</span>';
+    } else {
+        diskSubtitle.innerHTML = 'Status: <span class="status-ok">Normal / Healthy</span>';
+    }
+    setCardWarning('disk-card', diskWarning, diskCritical);
+    
+    // 5. Network Card (Three-tier warnings)
+    const netTotalSpeed = data.net_download_speed + data.net_upload_speed;
+    let netVal = 0, netUnit = " B/s";
+    if (netTotalSpeed >= 1024**2) {
+        netVal = (netTotalSpeed / (1024**2)).toFixed(1);
+        netUnit = " MB/s";
+    } else if (netTotalSpeed >= 1024) {
+        netVal = (netTotalSpeed / 1024).toFixed(1);
+        netUnit = " KB/s";
+    } else {
+        netVal = netTotalSpeed.toFixed(0);
+        netUnit = " B/s";
+    }
+    document.getElementById('net-io-speed-val').textContent = netVal;
+    document.getElementById('net-io-unit-val').textContent = netUnit;
     document.getElementById('net-total-sent').textContent = formatBytes(data.net_bytes_sent);
     document.getElementById('net-total-recv').textContent = formatBytes(data.net_bytes_received);
+    
+    const netSubtitle = document.getElementById('net-status-subtitle');
+    const netCritical = netTotalSpeed > 5 * 1024**2; // > 5 MB/s
+    const netWarning = !netCritical && netTotalSpeed > 1 * 1024**2; // > 1 MB/s
+    
+    if (netCritical) {
+        netSubtitle.innerHTML = 'Status: <span class="status-crit">Heavy I/O Transfer</span>';
+    } else if (netWarning) {
+        netSubtitle.innerHTML = 'Status: <span class="status-warn">Moderate Activity</span>';
+    } else {
+        netSubtitle.innerHTML = 'Status: <span class="status-ok">Normal / Healthy</span>';
+    }
+    setCardWarning('network-card', netWarning, netCritical);
 
-    // 6. Power & Battery Card DOM updates
-    const bBadge = document.getElementById('battery-status-badge');
-    const bFill = document.getElementById('battery-fill-bar');
-    const bCharging = document.getElementById('battery-charging-icon');
-    const bPercent = document.getElementById('battery-percent-val');
-    const bTimeLabel = document.getElementById('battery-time-label');
-    const bTimeVal = document.getElementById('battery-time-val');
-
-    bBadge.textContent = data.battery_plugged ? "Charging" : "Discharging";
-    bPercent.textContent = data.battery_percent;
+    // 6. Power & Battery Card
+    document.getElementById('battery-percent-val').textContent = data.battery_percent;
+    const bFill = document.getElementById('battery-fill');
     bFill.style.width = data.battery_percent + '%';
     
-    // Status colors for battery fill
-    bFill.classList.remove('low-charge', 'warning-charge');
+    // Status colors for battery cell level
     if (data.battery_percent <= 15) {
-        bFill.classList.add('low-charge');
+        bFill.style.backgroundColor = '#ff3d00';
     } else if (data.battery_percent <= 40) {
-        bFill.classList.add('warning-charge');
-    }
-
-    if (data.battery_plugged) {
-        bCharging.style.display = 'flex';
-        bTimeLabel.textContent = "Status:";
-        bTimeVal.textContent = data.battery_time_left;
-        document.getElementById('watt-adapter-container').style.display = 'flex';
+        bFill.style.backgroundColor = '#ffaa00';
     } else {
-        bCharging.style.display = 'none';
-        bTimeLabel.textContent = "Remaining:";
-        bTimeVal.textContent = `${data.battery_time_left} (Active: ${data.battery_time_used})`;
-        document.getElementById('watt-adapter-container').style.display = 'none';
+        bFill.style.backgroundColor = '#00e676';
     }
-
+    
+    const bBadge = document.getElementById('battery-status-badge');
+    const bLightning = document.getElementById('battery-lightning-icon');
+    const batteryStatusSubtitle = document.getElementById('battery-status-subtitle');
+    
+    const battCritical = !data.battery_plugged && data.battery_percent <= 15;
+    const battWarning = !data.battery_plugged && data.battery_percent <= 40;
+    
+    bBadge.textContent = data.battery_plugged ? "Charging" : "Discharging";
+    if (data.battery_plugged) {
+        bLightning.style.display = 'flex';
+        if (batteryStatusSubtitle) {
+            batteryStatusSubtitle.innerHTML = 'Status: <span class="status-ok">' + data.battery_time_left + '</span>';
+        }
+        document.getElementById('watt-adapter-container-tiny').style.display = 'block';
+    } else {
+        bLightning.style.display = 'none';
+        if (batteryStatusSubtitle) {
+            if (battCritical) {
+                batteryStatusSubtitle.innerHTML = 'Remaining: <span class="status-crit">' + data.battery_time_left + '</span>';
+            } else if (battWarning) {
+                batteryStatusSubtitle.innerHTML = 'Remaining: <span class="status-warn">' + data.battery_time_left + '</span>';
+            } else {
+                batteryStatusSubtitle.innerHTML = 'Remaining: <span class="status-ok">' + data.battery_time_left + '</span>';
+            }
+        }
+        document.getElementById('watt-adapter-container-tiny').style.display = 'none';
+    }
+    
     document.getElementById('watt-total-val').textContent = data.power_total_w.toFixed(1) + ' W';
     document.getElementById('watt-cpu-val').textContent = data.power_cpu_w.toFixed(1) + ' W';
     document.getElementById('watt-gpu-val').textContent = data.power_gpu_w.toFixed(1) + ' W';
     document.getElementById('watt-charging-val').textContent = data.power_charging_w.toFixed(1) + ' W';
     
-    // Update card border styles based on battery levels
-    setCardWarning('power-battery-card', !data.battery_plugged && data.battery_percent <= 30, !data.battery_plugged && data.battery_percent <= 15);
+    setCardWarning('power-battery-card', battWarning, battCritical);
 }
 
 // Evaluate limits and trigger browser alerts
@@ -716,7 +837,7 @@ function showToast(title, body, type = 'warning') {
 }
 
 // Chart.js Setup and Data Points update
-function initCharts() {
+function initCharts(firstMetrics = null) {
     const isDark = state.theme === 'dark';
     const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
     const labelColor = isDark ? '#8b9bb4' : '#536279';
@@ -724,7 +845,9 @@ function initCharts() {
     const chartOptions = (yMax = null, formatType = 'percent') => ({
         responsive: true,
         maintainAspectRatio: false,
-        animation: { duration: 0 }, // Disable animations for real-time scrolling speed
+        animation: {
+            duration: 0
+        },
         elements: {
             point: { radius: 0 },
             line: { tension: 0.15, borderWidth: 2 }
@@ -747,9 +870,6 @@ function initCharts() {
                             if (value >= 1024) return (value / 1024).toFixed(0) + ' KB/s';
                             return value + ' B/s';
                         }
-                        if (formatType === 'watts') {
-                            return value.toFixed(0) + ' W';
-                        }
                         return value + '%';
                     }
                 }
@@ -766,162 +886,162 @@ function initCharts() {
 
     const labels = Array(maxChartPoints).fill('');
 
-    // 1. CPU & Memory Chart
-    const ctx1 = document.getElementById('cpuMemChart').getContext('2d');
-    charts.cpuMem = new Chart(ctx1, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                {
+    // 1. CPU Chart
+    const ctx1 = document.getElementById('cpuChart');
+    if (ctx1) {
+        charts.cpu = new Chart(ctx1.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
                     label: 'CPU Usage',
-                    data: Array(maxChartPoints).fill(0),
+                    data: Array(maxChartPoints).fill(firstMetrics ? firstMetrics.cpu_usage : 0),
                     borderColor: '#0088ff',
                     backgroundColor: 'rgba(0, 136, 255, 0.05)',
                     fill: true
-                },
-                {
+                }]
+            },
+            options: chartOptions(100)
+        });
+    }
+
+    // 2. Memory Chart
+    const ctxMem = document.getElementById('memChart');
+    if (ctxMem) {
+        charts.mem = new Chart(ctxMem.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
                     label: 'Memory Usage',
-                    data: Array(maxChartPoints).fill(0),
+                    data: Array(maxChartPoints).fill(firstMetrics ? firstMetrics.ram_usage_percent : 0),
                     borderColor: '#00e676',
                     backgroundColor: 'rgba(0, 230, 118, 0.05)',
                     fill: true
-                }
-            ]
-        },
-        options: chartOptions(100)
-    });
+                }]
+            },
+            options: chartOptions(100)
+        });
+    }
 
-    // 2. GPU Chart
-    const ctx2 = document.getElementById('gpuChart').getContext('2d');
-    charts.gpu = new Chart(ctx2, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'GPU Utilization',
-                data: Array(maxChartPoints).fill(0),
-                borderColor: '#e040fb',
-                backgroundColor: 'rgba(224, 64, 251, 0.05)',
-                fill: true
-            }]
-        },
-        options: chartOptions(100)
-    });
-
-    // 3. Network Chart
-    const ctx3 = document.getElementById('netChart').getContext('2d');
-    charts.network = new Chart(ctx3, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Upload Rate',
-                    data: Array(maxChartPoints).fill(0),
-                    borderColor: '#ffaa00',
-                    fill: false
-                },
-                {
-                    label: 'Download Rate',
-                    data: Array(maxChartPoints).fill(0),
-                    borderColor: '#00e676',
-                    fill: false
-                }
-            ]
-        },
-        options: chartOptions(null, 'speed')
-    });
-
-    // 4. Disk Chart
-    const ctx4 = document.getElementById('diskChart').getContext('2d');
-    charts.disk = new Chart(ctx4, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Disk Read Rate',
-                    data: Array(maxChartPoints).fill(0),
-                    borderColor: '#0088ff',
-                    fill: false
-                },
-                {
-                    label: 'Disk Write Rate',
-                    data: Array(maxChartPoints).fill(0),
-                    borderColor: '#ff4d4d',
-                    fill: false
-                }
-            ]
-        },
-        options: chartOptions(null, 'speed')
-    });
-
-    // 5. Power Chart
-    const ctx5 = document.getElementById('powerChart').getContext('2d');
-    charts.power = new Chart(ctx5, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Total System',
-                    data: Array(maxChartPoints).fill(0),
-                    borderColor: '#ffaa00',
-                    fill: false
-                },
-                {
-                    label: 'CPU Package',
-                    data: Array(maxChartPoints).fill(0),
-                    borderColor: '#0088ff',
-                    fill: false
-                },
-                {
-                    label: 'GPU Core',
-                    data: Array(maxChartPoints).fill(0),
+    // 3. GPU Chart
+    const ctx2 = document.getElementById('gpuChart');
+    if (ctx2) {
+        charts.gpu = new Chart(ctx2.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'GPU Utilization',
+                    data: Array(maxChartPoints).fill(firstMetrics ? firstMetrics.gpu_usage : 0),
                     borderColor: '#e040fb',
-                    fill: false
-                }
-            ]
-        },
-        options: chartOptions(null, 'watts')
-    });
+                    backgroundColor: 'rgba(224, 64, 251, 0.05)',
+                    fill: true
+                }]
+            },
+            options: chartOptions(100)
+        });
+    }
+
+    // 4. Network Chart
+    const ctx3 = document.getElementById('netChart');
+    if (ctx3) {
+        charts.network = new Chart(ctx3.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Upload Rate',
+                        data: Array(maxChartPoints).fill(firstMetrics ? firstMetrics.net_upload_speed : 0),
+                        borderColor: '#ffaa00',
+                        fill: false
+                    },
+                    {
+                        label: 'Download Rate',
+                        data: Array(maxChartPoints).fill(firstMetrics ? firstMetrics.net_download_speed : 0),
+                        borderColor: '#00e676',
+                        fill: false
+                    }
+                ]
+            },
+            options: chartOptions(null, 'speed')
+        });
+    }
+
+    // 5. Disk Chart
+    const ctx4 = document.getElementById('diskChart');
+    if (ctx4) {
+        charts.disk = new Chart(ctx4.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Disk Read Rate',
+                        data: Array(maxChartPoints).fill(firstMetrics ? firstMetrics.disk_read_speed : 0),
+                        borderColor: '#0088ff',
+                        fill: false
+                    },
+                    {
+                        label: 'Disk Write Rate',
+                        data: Array(maxChartPoints).fill(firstMetrics ? firstMetrics.disk_write_speed : 0),
+                        borderColor: '#ff4d4d',
+                        fill: false
+                    }
+                ]
+            },
+            options: chartOptions(null, 'speed')
+        });
+    }
 }
 
 function updateDashboardCharts(data) {
     if (state.activeView !== 'dashboard') return;
-    if (!charts.cpuMem || !charts.gpu || !charts.network || !charts.disk || !charts.power) return;
+    
+    // Lazily instantiate charts on first telemetry frame
+    if (Object.keys(charts).length === 0) {
+        initCharts(data);
+        return;
+    }
     
     const updateLineData = (chartInstance, datasetIndex, newValue) => {
+        if (!chartInstance) return;
         const dataset = chartInstance.data.datasets[datasetIndex].data;
         dataset.shift();
         dataset.push(newValue);
     };
 
-    // CPU & RAM
-    updateLineData(charts.cpuMem, 0, data.cpu_usage);
-    updateLineData(charts.cpuMem, 1, data.ram_usage_percent);
-    charts.cpuMem.update('none');
+    const smoothUpdateOptions = {
+        duration: 0
+    };
 
-    // GPU
-    updateLineData(charts.gpu, 0, data.gpu_usage);
-    charts.gpu.update('none');
+    if (charts.cpu) {
+        updateLineData(charts.cpu, 0, data.cpu_usage);
+        charts.cpu.update(smoothUpdateOptions);
+    }
 
-    // Network (Bytes/sec)
-    updateLineData(charts.network, 0, data.net_upload_speed);
-    updateLineData(charts.network, 1, data.net_download_speed);
-    charts.network.update('none');
+    if (charts.mem) {
+        updateLineData(charts.mem, 0, data.ram_usage_percent);
+        charts.mem.update(smoothUpdateOptions);
+    }
 
-    // Disk (Bytes/sec)
-    updateLineData(charts.disk, 0, data.disk_read_speed);
-    updateLineData(charts.disk, 1, data.disk_write_speed);
-    charts.disk.update('none');
+    if (charts.gpu) {
+        updateLineData(charts.gpu, 0, data.gpu_usage);
+        charts.gpu.update(smoothUpdateOptions);
+    }
 
-    // Laptop Power Draw (Watts)
-    updateLineData(charts.power, 0, data.power_total_w);
-    updateLineData(charts.power, 1, data.power_cpu_w);
-    updateLineData(charts.power, 2, data.power_gpu_w);
-    charts.power.update('none');
+    if (charts.network) {
+        updateLineData(charts.network, 0, data.net_upload_speed);
+        updateLineData(charts.network, 1, data.net_download_speed);
+        charts.network.update(smoothUpdateOptions);
+    }
+
+    if (charts.disk) {
+        updateLineData(charts.disk, 0, data.disk_read_speed);
+        updateLineData(charts.disk, 1, data.disk_write_speed);
+        charts.disk.update(smoothUpdateOptions);
+    }
 }
 
 // Processes Monitor REST Poller and Render
@@ -951,77 +1071,68 @@ function pollProcesses() {
 }
 
 function renderProcesses() {
-    const tbody = document.getElementById('process-table-body');
+    const list = state.processes || [];
     
-    // Search, Filter
-    let filtered = state.processes.filter(p => {
-        // Name & PID Search
-        const matchesSearch = p.name.toLowerCase().includes(state.procSearch) || p.pid.toString().includes(state.procSearch);
-        
-        // Status Filter
-        let matchesStatus = true;
-        if (state.procStatusFilter === 'running') {
-            matchesStatus = p.status === 'running';
-        } else if (state.procStatusFilter === 'suspended') {
-            matchesStatus = p.status === 'suspended' || p.status === 'sleeping' || p.status === 'stopped';
-        }
-        
-        return matchesSearch && matchesStatus;
-    });
+    // Get formatted local time for the "Time" column (e.g. 05:59 PM)
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
-    // Sort
-    const col = state.procSortCol;
-    const desc = state.procSortDesc;
-    filtered.sort((a, b) => {
-        let valA = a[col];
-        let valB = b[col];
-        
-        // Case insensitive string compare
-        if (typeof valA === 'string') {
-            valA = valA.toLowerCase();
-            valB = valB.toLowerCase();
-        }
-        
-        if (valA < valB) return desc ? 1 : -1;
-        if (valA > valB) return desc ? -1 : 1;
-        return 0;
-    });
-    
-    // Total Badge
-    document.getElementById('process-count').textContent = filtered.length;
-    
-    // Pagination slicing
-    const totalItems = filtered.length;
-    const maxPage = Math.max(1, Math.ceil(totalItems / state.procPageSize));
-    if (state.procPage > maxPage) state.procPage = maxPage;
-    
-    const startIndex = (state.procPage - 1) * state.procPageSize;
-    const paginated = filtered.slice(startIndex, startIndex + state.procPageSize);
-    
-    // Button updates
-    document.getElementById('proc-prev-page').disabled = state.procPage === 1;
-    document.getElementById('proc-next-page').disabled = state.procPage === maxPage;
-    document.getElementById('proc-page-info').textContent = `Page ${state.procPage} of ${maxPage}`;
-    
-    if (paginated.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="loading-cell">No active processes matched criteria.</td></tr>`;
-        return;
-    }
-    
-    tbody.innerHTML = paginated.map(p => {
-        const badgeClass = p.status === 'running' ? 'running' : 'suspended';
-        return `
+    // 1. Top Processes - CPU (Sorted by cpu_usage descending)
+    const cpuSorted = [...list].sort((a, b) => b.cpu_usage - a.cpu_usage).slice(0, 7);
+    const cpuBody = document.getElementById('body-proc-cpu');
+    if (cpuBody) {
+        cpuBody.innerHTML = cpuSorted.map(p => `
             <tr>
-                <td><strong>${escapeHtml(p.name)}</strong></td>
-                <td><span class="text-secondary">${p.pid}</span></td>
-                <td><strong>${p.cpu_usage.toFixed(1)}%</strong></td>
-                <td>${p.memory_mb.toFixed(1)} MB</td>
-                <td>${p.threads}</td>
-                <td><span class="status-badge ${badgeClass}">${escapeHtml(p.status)}</span></td>
-                <td class="text-secondary font-mini" title="${escapeHtml(p.path)}">${escapeHtml(p.path)}</td>
+                <td>${timeStr}</td>
+                <td><a href="#" class="process-link" title="${escapeHtml(p.path)}">${escapeHtml(p.name)}</a></td>
+                <td class="text-right text-secondary">${p.threads}</td>
+                <td class="text-right"><strong>${p.cpu_usage.toFixed(1)}%</strong></td>
             </tr>
-        `;
-    }).join('');
+        `).join('') || '<tr><td colspan="4" class="loading-cell">No active processes</td></tr>';
+    }
+
+    // 2. Top Processes - Memory (Sorted by memory_mb descending)
+    const memSorted = [...list].sort((a, b) => b.memory_mb - a.memory_mb).slice(0, 7);
+    const memBody = document.getElementById('body-proc-mem');
+    if (memBody) {
+        memBody.innerHTML = memSorted.map(p => `
+            <tr>
+                <td>${timeStr}</td>
+                <td><a href="#" class="process-link" title="${escapeHtml(p.path)}">${escapeHtml(p.name)}</a></td>
+                <td class="text-right text-secondary">${p.commit_mb.toFixed(1)} MB</td>
+                <td class="text-right"><strong>${p.memory_mb.toFixed(1)} MB</strong></td>
+            </tr>
+        `).join('') || '<tr><td colspan="4" class="loading-cell">No active processes</td></tr>';
+    }
+
+    // 3. Disk Activity (Sorted by read_speed + write_speed descending)
+    const diskSorted = [...list].sort((a, b) => (b.read_speed + b.write_speed) - (a.read_speed + a.write_speed)).slice(0, 7);
+    const diskBody = document.getElementById('body-proc-disk');
+    if (diskBody) {
+        diskBody.innerHTML = diskSorted.map(p => `
+            <tr>
+                <td>${timeStr}</td>
+                <td><a href="#" class="process-link" title="${escapeHtml(p.path)}">${escapeHtml(p.name)}</a></td>
+                <td class="text-right text-secondary">${formatBytesRate(p.read_speed)}</td>
+                <td class="text-right text-secondary">${formatBytesRate(p.write_speed)}</td>
+                <td class="text-right"><strong>${formatBytesRate(p.read_speed + p.write_speed)}</strong></td>
+            </tr>
+        `).join('') || '<tr><td colspan="5" class="loading-cell">No active I/O processes</td></tr>';
+    }
+
+    // 4. Network Activity (Sorted by net_up_speed + net_down_speed descending)
+    const netSorted = [...list].sort((a, b) => (b.net_up_speed + b.net_down_speed) - (a.net_up_speed + a.net_down_speed)).slice(0, 7);
+    const netBody = document.getElementById('body-proc-net');
+    if (netBody) {
+        netBody.innerHTML = netSorted.map(p => `
+            <tr>
+                <td>${timeStr}</td>
+                <td><a href="#" class="process-link" title="${escapeHtml(p.path)}">${p.connections > 0 ? escapeHtml(p.name) : '-'}</a></td>
+                <td class="text-right text-secondary">${p.connections > 0 ? formatBytesRate(p.net_up_speed) : '-'}</td>
+                <td class="text-right text-secondary">${p.connections > 0 ? formatBytesRate(p.net_down_speed) : '-'}</td>
+                <td class="text-right"><strong>${p.connections > 0 ? formatBytesRate(p.net_up_speed + p.net_down_speed) : '-'}</strong></td>
+            </tr>
+        `).join('') || '<tr><td colspan="5" class="loading-cell">No active connection processes</td></tr>';
+    }
 }
 
 // Fetch Static Hardware specs
@@ -1029,6 +1140,9 @@ async function fetchHardwareSpecs() {
     try {
         const res = await fetch('/api/static-info');
         const data = await res.json();
+        
+        // Cache node name for infrastructure overview
+        state.computerName = data.computer_name || 'ObserveXNode';
         
         // System Information
         document.getElementById('spec-pc-name').textContent = data.computer_name || 'N/A';

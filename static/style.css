@@ -1327,3 +1327,422 @@ th.sort-desc .sort-indicator::after {
     50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
 }
 
+/* ==========================================================================
+   ObserveX UI Redesign Styles (Reference Image Alignments)
+   ========================================================================== */
+
+/* 3x2 Symmetrical Grid for Dashboard Cards */
+.metrics-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 20px !important;
+}
+
+/* Redesigned Card Header */
+.card-head-redesign {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.card-title-tiny {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.badge-accent {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-blue);
+    background: rgba(0, 136, 255, 0.1);
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+/* Redesigned Card Body & Accent Blocks */
+.card-body-redesign {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.value-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.value-display-redesign {
+    font-size: 28px;
+    font-family: var(--font-heading);
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1.1;
+}
+
+.value-display-redesign .unit {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-left: 2px;
+}
+
+/* Clean color indicator blocks matching Image 4 */
+.accent-block {
+    width: 44px;
+    height: 32px;
+    border-radius: 6px;
+    opacity: 0.85;
+    transition: var(--transition-smooth);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.cpu-accent { background: #00c8ff; }
+.ram-accent { background: #bf5af2; } /* purple */
+.gpu-accent { background: #ff2d55; } /* pink */
+.disk-accent { background: #ff453a; } /* coral/red */
+.net-accent { background: #00d2ff; }  /* light blue */
+
+.card-subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin-top: -2px;
+}
+
+.status-ok {
+    color: #00e676;
+    font-weight: 600;
+}
+
+.status-warn {
+    color: #ffaa00;
+    font-weight: 600;
+}
+
+.status-crit {
+    color: #ff3d00;
+    font-weight: 600;
+    animation: battery-low-pulse 1s infinite;
+}
+
+.card-footer-info-redesign {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    border-top: 1px solid rgba(255,255,255,0.03);
+    padding-top: 6px;
+}
+
+/* Power Card Tiny Grid layout */
+.watt-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+    border-top: 1px solid rgba(255,255,255,0.03);
+    padding-top: 6px;
+    margin-top: 4px;
+}
+
+.watt-item-tiny {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.watt-item-tiny strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+/* Battery Cell Shell */
+.battery-cell-container {
+    position: relative;
+    width: 52px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+}
+
+.battery-cell-shell {
+    width: 44px;
+    height: 22px;
+    border: 2px solid var(--text-secondary);
+    border-radius: 4px;
+    padding: 1.5px;
+    position: relative;
+}
+
+.battery-cell-shell::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    right: -5px;
+    width: 3px;
+    height: 8px;
+    background: var(--text-secondary);
+    border-radius: 0 2px 2px 0;
+}
+
+.battery-cell-level {
+    height: 100%;
+    background-color: var(--accent-green);
+    border-radius: 1px;
+    transition: width 0.3s ease;
+}
+
+.battery-lightning {
+    position: absolute;
+    top: 50%;
+    left: 45%;
+    transform: translate(-50%, -50%);
+    color: var(--accent-yellow);
+    width: 14px;
+    height: 14px;
+    animation: lightning-flash 1.5s infinite;
+}
+
+/* 2x2 Processes Redesign Grid matching Image 3 */
+.processes-grid-redesign {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 380px);
+    gap: 20px;
+    padding-bottom: 20px;
+}
+
+.process-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 10px;
+}
+
+.process-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 18px;
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.process-card-header h4 {
+    font-family: var(--font-heading);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.header-icon-arrow {
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.process-card-body {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 5px 0;
+}
+
+/* Redesigned tables matching Image 3 */
+.redesign-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.redesign-table th {
+    position: sticky;
+    top: 0;
+    background: var(--scrollbar-track);
+    color: var(--text-secondary);
+    font-weight: 600;
+    padding: 8px 16px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    z-index: 10;
+}
+
+.redesign-table td {
+    padding: 8px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.redesign-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.redesign-table a.process-link {
+    color: #0088ff;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.redesign-table a.process-link:hover {
+    text-decoration: underline;
+}
+
+.text-right {
+    text-align: right !important;
+}
+
+.loading-cell {
+    text-align: center !important;
+    color: var(--text-muted);
+    padding: 40px !important;
+}
+
+/* ==========================================================================
+   ObserveX Smooth Scrolling, Overview Bar & Mini Toggle CSS
+   ========================================================================== */
+
+/* Live Infrastructure Overview Bar (Top of Performance tab) */
+.overview-bar {
+    margin-bottom: 20px;
+    padding: 14px 20px;
+    border-radius: 10px;
+    overflow-x: auto;
+    border: 1px solid var(--card-border);
+}
+
+.overview-table-wrapper {
+    width: 100%;
+}
+
+.overview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    font-family: var(--font-body);
+}
+
+.overview-table th {
+    text-align: left;
+    padding: 6px 12px;
+    color: var(--text-muted);
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.overview-table td {
+    padding: 10px 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    vertical-align: middle;
+}
+
+.text-primary-glow {
+    color: var(--accent-blue) !important;
+    text-shadow: 0 0 10px rgba(0, 136, 255, 0.3);
+    font-weight: 600 !important;
+}
+
+.status-badge-up {
+    background: rgba(0, 230, 118, 0.12);
+    color: var(--accent-green);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    display: inline-block;
+    text-shadow: 0 0 8px rgba(0, 230, 118, 0.2);
+}
+
+/* Power details toggle styling */
+.power-toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.toggle-label-tiny {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+}
+
+.switch-mini {
+    position: relative;
+    display: inline-block;
+    width: 28px;
+    height: 16px;
+}
+
+.switch-mini input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider-mini {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.08);
+    transition: .2s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.slider-mini:before {
+    position: absolute;
+    content: "";
+    height: 10px;
+    width: 10px;
+    left: 2px;
+    bottom: 2px;
+    background-color: var(--text-secondary);
+    transition: .2s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 50%;
+}
+
+.switch-mini input:checked + .slider-mini {
+    background-color: rgba(0, 136, 255, 0.2);
+    border-color: rgba(0, 136, 255, 0.35);
+}
+
+.switch-mini input:checked + .slider-mini:before {
+    transform: translateX(12px);
+    background-color: var(--accent-blue);
+    box-shadow: 0 0 6px rgba(0, 136, 255, 0.6);
+}
+
+/* Telemetry repainting performance optimization (smooth 60Hz scrolling) */
+.metric-card, .process-card, .hardware-card, .overview-bar {
+    backdrop-filter: none !important;
+}
+
+[data-theme="dark"] .metric-card, 
+[data-theme="dark"] .process-card, 
+[data-theme="dark"] .hardware-card,
+[data-theme="dark"] .overview-bar {
+    background-color: rgba(16, 20, 29, 0.95) !important;
+}
+
+[data-theme="light"] .metric-card, 
+[data-theme="light"] .process-card, 
+[data-theme="light"] .hardware-card,
+[data-theme="light"] .overview-bar {
+    background-color: rgba(255, 255, 255, 0.96) !important;
+    border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+

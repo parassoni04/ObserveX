@@ -23,6 +23,7 @@ class SystemMonitor:
         self.process_cache = []
         self.process_tick = 0
         self.unplugged_time = None
+        self.prev_proc_io = {}
         
         # Historical rates variables
         self.prev_disk_read = 0
@@ -30,6 +31,7 @@ class SystemMonitor:
         self.prev_net_sent = 0
         self.prev_net_recv = 0
         self.prev_time = time.time()
+        self.refresh_interval = 0.2
         
         # Initialize IO counters
         try:
@@ -45,6 +47,12 @@ class SystemMonitor:
             if net_io:
                 self.prev_net_sent = net_io.bytes_sent
                 self.prev_net_recv = net_io.bytes_recv
+        except Exception:
+            pass
+
+        # Establish CPU baseline so first tick returns real values instead of 0.0
+        try:
+            psutil.cpu_percent(interval=None)
         except Exception:
             pass
 
@@ -385,236 +393,286 @@ class SystemMonitor:
     def _live_monitor_loop(self):
         # We run this loop in the background to calculate speeds correctly
         # and store metrics in self.live_metrics.
+        import pythoncom
+        pythoncom.CoInitialize()
+        
+        wmi_wmi = None
+        wmi_cim = None
+        
+        # Local cache for slow-tick values to update them only once per second
+        slow_metrics = {
+            "cpu_temp": "N/A",
+            "battery_percent": 100,
+            "battery_plugged": True,
+            "battery_time_left": "Charging...",
+            "battery_time_used": "N/A",
+            "disk_usage_percent": 0.0,
+            "disk_total_gb": 0.0,
+            "disk_used_gb": 0.0,
+            "disk_free_gb": 0.0,
+            "disk_read_speed": 0.0,
+            "disk_write_speed": 0.0,
+            "net_upload_speed": 0.0,
+            "net_download_speed": 0.0,
+            "net_bytes_sent": 0,
+            "net_bytes_received": 0,
+            "system_uptime": "0d 0h 0m 0s",
+            "boot_time": "N/A",
+            "network_connected": True
+        }
+        
+        last_slow_tick = 0.0
+        
         while self.running:
             try:
-                # 1. CPU
+                # Re-connect WMI if None (self-healing cached connections)
+                if wmi_wmi is None:
+                    try:
+                        wmi_wmi = win32com.client.GetObject("winmgmts:\\\\.\\root\\wmi")
+                    except Exception:
+                        pass
+                if wmi_cim is None:
+                    try:
+                        wmi_cim = win32com.client.GetObject("winmgmts:")
+                    except Exception:
+                        pass
+
+                # Fast telemetry: CPU and RAM loads (always updated)
                 cpu_usage = psutil.cpu_percent(interval=None)
                 cpu_freq_info = psutil.cpu_freq()
                 cpu_freq = f"{round(cpu_freq_info.current / 1000, 2)} GHz" if cpu_freq_info else "N/A"
                 
-                # Temperature & Battery query (requires WMI)
-                cpu_temp = "N/A"
-                charge_rate_mw = 0
-                discharge_rate_mw = 0
-                try:
-                    import pythoncom
-                    pythoncom.CoInitialize()
-                    wmi_wmi = win32com.client.GetObject("winmgmts:\\\\.\\root\\wmi")
-                    
-                    try:
-                        for zone in wmi_wmi.InstancesOf("MSAcpi_ThermalZoneTemperature"):
-                            raw = zone.CurrentTemperature
-                            celsius = (raw - 2732) / 10.0
-                            cpu_temp = f"{celsius:.1f} °C"
-                            break
-                    except Exception:
-                        cpu_temp = "N/A (Admin Required)"
-                        
-                    try:
-                        for status in wmi_wmi.InstancesOf("BatteryStatus"):
-                            charge_rate_mw = getattr(status, "ChargeRate", 0) or 0
-                            discharge_rate_mw = getattr(status, "DischargeRate", 0) or 0
-                            break
-                    except Exception:
-                        pass
-                except Exception:
-                    cpu_temp = "N/A"
-                finally:
-                    try:
-                        pythoncom.CoUninitialize()
-                    except Exception:
-                        pass
-                
-                # 2. RAM
                 ram = psutil.virtual_memory()
                 ram_total = round(ram.total / (1024**3), 2)
                 ram_used = round(ram.used / (1024**3), 2)
                 ram_avail = round(ram.available / (1024**3), 2)
                 ram_percent = ram.percent
-                
-                # 3. Disk usage (root/primary partition)
-                primary_mount = "C:\\" if os.name == 'nt' else '/'
-                disk = psutil.disk_usage(primary_mount)
-                disk_total = round(disk.total / (1024**3), 2)
-                disk_used = round(disk.used / (1024**3), 2)
-                disk_free = round(disk.free / (1024**3), 2)
-                disk_percent = disk.percent
-                
-                # Speed rates
-                curr_time = time.time()
-                dt = curr_time - self.prev_time
-                if dt <= 0:
-                    dt = 1.0
-                
-                # Read/Write bytes rate
-                disk_read_speed = 0.0
-                disk_write_speed = 0.0
-                try:
-                    disk_io = psutil.disk_io_counters()
-                    if disk_io:
-                        disk_read_speed = (disk_io.read_bytes - self.prev_disk_read) / dt
-                        disk_write_speed = (disk_io.write_bytes - self.prev_disk_write) / dt
-                        self.prev_disk_read = disk_io.read_bytes
-                        self.prev_disk_write = disk_io.write_bytes
-                except Exception:
-                    pass
-                
-                # Network speeds rate
-                net_upload_speed = 0.0
-                net_download_speed = 0.0
-                net_total_sent = 0
-                net_total_recv = 0
-                try:
-                    net_io = psutil.net_io_counters()
-                    if net_io:
-                        net_upload_speed = (net_io.bytes_sent - self.prev_net_sent) / dt
-                        net_download_speed = (net_io.bytes_recv - self.prev_net_recv) / dt
-                        net_total_sent = net_io.bytes_sent
-                        net_total_recv = net_io.bytes_recv
-                        self.prev_net_sent = net_io.bytes_sent
-                        self.prev_net_recv = net_io.bytes_recv
-                except Exception:
-                    pass
-                
-                self.prev_time = curr_time
-                
-                # 4. GPU info
+
+                # Fast telemetry: GPU load & power
                 gpu = self._query_nvidia_gpu()
                 if not gpu["available"]:
                     gpu = self._query_wmi_gpu_fallback()
-                
-                # 5. System time variables
-                boot_time_ts = psutil.boot_time()
-                boot_time = datetime.datetime.fromtimestamp(boot_time_ts).strftime("%Y-%m-%d %H:%M:%S")
-                uptime_sec = max(0, int(time.time() - boot_time_ts))
-                
-                days, remainder = divmod(uptime_sec, 86400)
-                hours, remainder = divmod(remainder, 3600)
-                minutes, seconds = divmod(remainder, 60)
-                uptime_str = f"{days}d {hours}h {minutes}m {seconds}s"
-                
-                current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
-                # 5.5. Power and Battery status queries
+                gpu_power_w = gpu.get("power_w", 0.0) if gpu.get("available") else 0.0
+
+                # Fast telemetry: Total and CPU power counters (from WMI performance classes)
                 power_total_w = 0.0
                 power_cpu_w = 0.0
-                try:
-                    import pythoncom
-                    pythoncom.CoInitialize()
-                    wmi_cim = win32com.client.GetObject("winmgmts:")
-                    
-                    # Total system power
+                if wmi_cim:
                     try:
-                        for meter in wmi_cim.InstancesOf("Win32_PerfFormattedData_PowerMeterCounter_PowerMeter"):
+                        for meter in wmi_cim.ExecQuery("SELECT Power FROM Win32_PerfFormattedData_PowerMeterCounter_PowerMeter"):
                             power_total_w = float(getattr(meter, "Power", 0) or 0) / 1000.0
                             break
                     except Exception:
                         pass
                         
-                    # CPU package power
                     try:
-                        for energy in wmi_cim.InstancesOf("Win32_PerfFormattedData_PowerMeterCounter_EnergyMeter"):
+                        for energy in wmi_cim.ExecQuery("SELECT Name, Power FROM Win32_PerfFormattedData_PowerMeterCounter_EnergyMeter"):
                             name = getattr(energy, "Name", "")
                             if "PKG" in name or "Package" in name:
                                 power_cpu_w = float(getattr(energy, "Power", 0) or 0) / 1000.0
                                 break
                     except Exception:
                         pass
-                except Exception:
-                    pass
-                finally:
+
+                # Slow telemetry: run once every 1.0 second (independent of refresh interval)
+                now_time = time.time()
+                if now_time - last_slow_tick >= 1.0:
+                    last_slow_tick = now_time
+                    
+                    # 1. Non-admin CPU temperature
+                    cpu_temp = "N/A"
+                    if wmi_cim:
+                        try:
+                            max_temp_c = -273.15
+                            for zone in wmi_cim.ExecQuery("SELECT HighPrecisionTemperature FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation"):
+                                raw = getattr(zone, "HighPrecisionTemperature", 0)
+                                if raw > 0:
+                                    celsius = (raw - 2732) / 10.0
+                                    if celsius > max_temp_c:
+                                        max_temp_c = celsius
+                            if max_temp_c > -100.0:
+                                cpu_temp = f"{max_temp_c:.1f} °C"
+                        except Exception:
+                            pass
+                    
+                    # 2. Admin fallback CPU temp
+                    if cpu_temp == "N/A" and wmi_wmi:
+                        try:
+                            for zone in wmi_wmi.ExecQuery("SELECT CurrentTemperature FROM MSAcpi_ThermalZoneTemperature"):
+                                raw = zone.CurrentTemperature
+                                celsius = (raw - 2732) / 10.0
+                                cpu_temp = f"{celsius:.1f} °C"
+                                break
+                        except Exception:
+                            cpu_temp = "N/A (Admin Required)"
+                    slow_metrics["cpu_temp"] = cpu_temp
+
+                    # 3. Battery status and charge/discharge rate
+                    charge_rate_mw = 0
+                    discharge_rate_mw = 0
+                    if wmi_wmi:
+                        try:
+                            for status in wmi_wmi.ExecQuery("SELECT ChargeRate, DischargeRate FROM BatteryStatus"):
+                                charge_rate_mw = getattr(status, "ChargeRate", 0) or 0
+                                discharge_rate_mw = getattr(status, "DischargeRate", 0) or 0
+                                break
+                        except Exception:
+                            wmi_wmi = None
+
+                    batt = psutil.sensors_battery()
+                    if batt:
+                        batt_percent = batt.percent
+                        batt_plugged = batt.power_plugged
+                        batt_secsleft = batt.secsleft
+                    else:
+                        batt_percent = 100
+                        batt_plugged = True
+                        batt_secsleft = -1
+                        
+                    if batt_plugged:
+                        batt_time_left = "Fully Charged" if batt_percent >= 99 else "Charging..."
+                    else:
+                        if batt_secsleft == psutil.POWER_TIME_UNKNOWN or batt_secsleft == 4294967295 or batt_secsleft < 0:
+                            batt_time_left = "Calculating..."
+                        elif batt_secsleft == psutil.POWER_TIME_UNLIMITED:
+                            batt_time_left = "Unlimited"
+                        else:
+                            shours, sremainder = divmod(batt_secsleft, 3600)
+                            sminutes, sseconds = divmod(sremainder, 60)
+                            batt_time_left = f"{shours}h {sminutes}m"
+                            
+                    if not batt_plugged:
+                        if self.unplugged_time is None:
+                            self.unplugged_time = time.time()
+                        elapsed = time.time() - self.unplugged_time
+                        uhours, uremainder = divmod(int(elapsed), 3600)
+                        uminutes, useconds = divmod(uremainder, 60)
+                        batt_time_used = f"{uhours}h {uminutes}m {useconds}s"
+                    else:
+                        self.unplugged_time = None
+                        batt_time_used = "N/A (Plugged In)"
+
+                    slow_metrics["battery_percent"] = batt_percent
+                    slow_metrics["battery_plugged"] = batt_plugged
+                    slow_metrics["battery_time_left"] = batt_time_left
+                    slow_metrics["battery_time_used"] = batt_time_used
+                    slow_metrics["charge_rate_mw"] = charge_rate_mw
+                    slow_metrics["discharge_rate_mw"] = discharge_rate_mw
+
+                    # 4. Storage partition usage
+                    primary_mount = "C:\\" if os.name == 'nt' else '/'
+                    disk = psutil.disk_usage(primary_mount)
+                    slow_metrics["disk_total_gb"] = round(disk.total / (1024**3), 2)
+                    slow_metrics["disk_used_gb"] = round(disk.used / (1024**3), 2)
+                    slow_metrics["disk_free_gb"] = round(disk.free / (1024**3), 2)
+                    slow_metrics["disk_usage_percent"] = disk.percent
+
+                    # 5. Speed rates (Disk and Network I/O)
+                    dt = now_time - self.prev_time
+                    if dt <= 0:
+                        dt = 1.0
+                    self.prev_time = now_time
+
+                    disk_read_speed = 0.0
+                    disk_write_speed = 0.0
                     try:
-                        pythoncom.CoUninitialize()
+                        disk_io = psutil.disk_io_counters()
+                        if disk_io:
+                            disk_read_speed = (disk_io.read_bytes - self.prev_disk_read) / dt
+                            disk_write_speed = (disk_io.write_bytes - self.prev_disk_write) / dt
+                            self.prev_disk_read = disk_io.read_bytes
+                            self.prev_disk_write = disk_io.write_bytes
                     except Exception:
                         pass
+                    slow_metrics["disk_read_speed"] = disk_read_speed
+                    slow_metrics["disk_write_speed"] = disk_write_speed
 
-                # Battery diagnostics
-                batt = psutil.sensors_battery()
-                if batt:
-                    batt_percent = batt.percent
-                    batt_plugged = batt.power_plugged
-                    batt_secsleft = batt.secsleft
-                else:
-                    batt_percent = 100
-                    batt_plugged = True
-                    batt_secsleft = -1
-                    
-                # Format remaining battery time
-                if batt_plugged:
-                    batt_time_left = "Fully Charged" if batt_percent >= 99 else "Charging..."
-                else:
-                    if batt_secsleft == psutil.POWER_TIME_UNKNOWN or batt_secsleft == 4294967295 or batt_secsleft < 0:
-                        batt_time_left = "Calculating..."
-                    elif batt_secsleft == psutil.POWER_TIME_UNLIMITED:
-                        batt_time_left = "Unlimited"
-                    else:
-                        shours, sremainder = divmod(batt_secsleft, 3600)
-                        sminutes, sseconds = divmod(sremainder, 60)
-                        batt_time_left = f"{shours}h {sminutes}m"
-                        
-                # Elapsed battery time
-                if not batt_plugged:
-                    if self.unplugged_time is None:
-                        self.unplugged_time = time.time()
-                    elapsed = time.time() - self.unplugged_time
-                    uhours, uremainder = divmod(int(elapsed), 3600)
-                    uminutes, useconds = divmod(uremainder, 60)
-                    batt_time_used = f"{uhours}h {uminutes}m {useconds}s"
-                else:
-                    self.unplugged_time = None
-                    batt_time_used = "N/A (Plugged In)"
-                    
-                gpu_power_w = gpu.get("power_w", 0.0) if gpu.get("available") else 0.0
-                
-                # Check adapter charging rates and fallbacks
+                    net_upload_speed = 0.0
+                    net_download_speed = 0.0
+                    net_total_sent = 0
+                    net_total_recv = 0
+                    try:
+                        net_io = psutil.net_io_counters()
+                        if net_io:
+                            net_upload_speed = (net_io.bytes_sent - self.prev_net_sent) / dt
+                            net_download_speed = (net_io.bytes_recv - self.prev_net_recv) / dt
+                            net_total_sent = net_io.bytes_sent
+                            net_total_recv = net_io.bytes_recv
+                            self.prev_net_sent = net_io.bytes_sent
+                            self.prev_net_recv = net_io.bytes_recv
+                    except Exception:
+                        pass
+                    slow_metrics["net_upload_speed"] = net_upload_speed
+                    slow_metrics["net_download_speed"] = net_download_speed
+                    slow_metrics["net_bytes_sent"] = net_total_sent
+                    slow_metrics["net_bytes_received"] = net_total_recv
+
+                    # 6. Uptime and system clock
+                    boot_time_ts = psutil.boot_time()
+                    boot_time = datetime.datetime.fromtimestamp(boot_time_ts).strftime("%Y-%m-%d %H:%M:%S")
+                    uptime_sec = max(0, int(time.time() - boot_time_ts))
+                    days, remainder = divmod(uptime_sec, 86400)
+                    hours, remainder = divmod(remainder, 3600)
+                    minutes, seconds = divmod(remainder, 60)
+                    slow_metrics["system_uptime"] = f"{days}d {hours}h {minutes}m {seconds}s"
+                    slow_metrics["boot_time"] = boot_time
+
+                    # 7. Check network connectivity
+                    has_active_net = False
+                    for adapter in self.static_info.get("network_adapters", []):
+                        if adapter["status"] == "Up" and adapter["ip"] != "No IP" and adapter["ip"] != "127.0.0.1":
+                            has_active_net = True
+                            break
+                    slow_metrics["network_connected"] = has_active_net
+
+                # Dynamic charger inputs from slow ticks
                 power_charging_w = 0.0
-                if batt_plugged:
-                    if charge_rate_mw > 0:
-                        power_charging_w = float(charge_rate_mw) / 1000.0
-                    if power_total_w == 0.0:
-                        # Estimate total laptop power when charging
-                        power_total_w = power_cpu_w + gpu_power_w + 12.0
+                if slow_metrics["battery_plugged"]:
+                    battery_charge_w = float(slow_metrics.get("charge_rate_mw", 0)) / 1000.0
+                    # If charge rate readout is buggy (returns 0W or very low while battery is low/charging), estimate it:
+                    if battery_charge_w < 5.0 and slow_metrics["battery_percent"] < 95:
+                        # Dynamic estimation based on standard battery charging curve
+                        battery_charge_w = round(32.0 * (1.0 - slow_metrics["battery_percent"] / 100.0), 2)
+                        if battery_charge_w < 10.0:
+                            battery_charge_w = 12.0
+                    
+                    # Total system load consumption
+                    system_consumption = power_cpu_w + gpu_power_w + 12.0
+                    if power_total_w < system_consumption:
+                        power_total_w = system_consumption
+                    
+                    # Charger supplies system load + power going into charging the battery cell
+                    power_charging_w = round(power_total_w + battery_charge_w, 2)
+                    # Total power drawn by the laptop from the wall adapter is charger input
+                    power_total_w = power_charging_w
                 else:
-                    if power_total_w == 0.0 and discharge_rate_mw > 0:
-                        power_total_w = float(discharge_rate_mw) / 1000.0
+                    if power_total_w == 0.0 and slow_metrics.get("discharge_rate_mw", 0) > 0:
+                        power_total_w = float(slow_metrics["discharge_rate_mw"]) / 1000.0
 
-                # 6. Calculate System Health Score
+                # 8. Calculate System Health Score
                 health_score = 100
-                
-                # Deduct for high CPU
                 if cpu_usage > 90:
                     health_score -= 15
                 elif cpu_usage > 80:
                     health_score -= 8
                     
-                # Deduct for high Memory
                 if ram_percent > 90:
                     health_score -= 20
                 elif ram_percent > 80:
                     health_score -= 10
                     
-                # Deduct for low Storage Space
-                if disk_percent > 95:
+                if slow_metrics["disk_usage_percent"] > 95:
                     health_score -= 15
-                elif disk_percent > 90:
+                elif slow_metrics["disk_usage_percent"] > 90:
                     health_score -= 8
                     
-                # Deduct for GPU temp or CPU temp if high
                 if gpu.get("temperature", 0) > 85:
                     health_score -= 10
                 elif gpu.get("temperature", 0) > 75:
                     health_score -= 4
                     
-                # Check network connectivity (if download/upload stats are completely zero or interfaces are down)
-                # If no adapter has an active IP (excluding loopback)
-                has_active_net = False
-                for adapter in self.static_info.get("network_adapters", []):
-                    if adapter["status"] == "Up" and adapter["ip"] != "No IP" and adapter["ip"] != "127.0.0.1":
-                        has_active_net = True
-                        break
-                if not has_active_net:
+                if not slow_metrics["network_connected"]:
                     health_score -= 25
-                    
                 health_score = max(0, min(100, health_score))
                 
                 # Update live metrics dictionary thread-safely
@@ -622,7 +680,7 @@ class SystemMonitor:
                     self.live_metrics = {
                         "cpu_usage": cpu_usage,
                         "cpu_frequency": cpu_freq,
-                        "cpu_temp": cpu_temp,
+                        "cpu_temp": slow_metrics["cpu_temp"],
                         "gpu_name": gpu["name"],
                         "gpu_usage": gpu["usage_percent"],
                         "gpu_memory_usage": gpu["memory_usage_percent"],
@@ -633,25 +691,25 @@ class SystemMonitor:
                         "ram_used_gb": ram_used,
                         "ram_avail_gb": ram_avail,
                         "ram_usage_percent": ram_percent,
-                        "disk_usage_percent": disk_percent,
-                        "disk_total_gb": disk_total,
-                        "disk_used_gb": disk_used,
-                        "disk_free_gb": disk_free,
-                        "disk_read_speed": disk_read_speed, # in bytes/sec
-                        "disk_write_speed": disk_write_speed, # in bytes/sec
-                        "net_upload_speed": net_upload_speed, # in bytes/sec
-                        "net_download_speed": net_download_speed, # in bytes/sec
-                        "net_bytes_sent": net_total_sent,
-                        "net_bytes_received": net_total_recv,
-                        "system_uptime": uptime_str,
-                        "boot_time": boot_time,
-                        "current_time": current_time,
+                        "disk_usage_percent": slow_metrics["disk_usage_percent"],
+                        "disk_total_gb": slow_metrics["disk_total_gb"],
+                        "disk_used_gb": slow_metrics["disk_used_gb"],
+                        "disk_free_gb": slow_metrics["disk_free_gb"],
+                        "disk_read_speed": slow_metrics["disk_read_speed"],
+                        "disk_write_speed": slow_metrics["disk_write_speed"],
+                        "net_upload_speed": slow_metrics["net_upload_speed"],
+                        "net_download_speed": slow_metrics["net_download_speed"],
+                        "net_bytes_sent": slow_metrics["net_bytes_sent"],
+                        "net_bytes_received": slow_metrics["net_bytes_received"],
+                        "system_uptime": slow_metrics["system_uptime"],
+                        "boot_time": slow_metrics["boot_time"],
+                        "current_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "health_score": health_score,
-                        "network_connected": has_active_net,
-                        "battery_percent": batt_percent,
-                        "battery_plugged": batt_plugged,
-                        "battery_time_left": batt_time_left,
-                        "battery_time_used": batt_time_used,
+                        "network_connected": slow_metrics["network_connected"],
+                        "battery_percent": slow_metrics["battery_percent"],
+                        "battery_plugged": slow_metrics["battery_plugged"],
+                        "battery_time_left": slow_metrics["battery_time_left"],
+                        "battery_time_used": slow_metrics["battery_time_used"],
                         "power_total_w": round(power_total_w, 2),
                         "power_cpu_w": round(power_cpu_w, 2),
                         "power_gpu_w": round(gpu_power_w, 2),
@@ -659,13 +717,13 @@ class SystemMonitor:
                     }
                 # Update process cache every 3 seconds
                 self.process_tick += 1
-                if self.process_tick >= 3 or not self.process_cache:
+                if self.process_tick >= 15 or not self.process_cache: # Scaled for fast tick rate (15 * 0.2s = 3.0s)
                     self.process_tick = 0
                     threading.Thread(target=self._update_process_cache, daemon=True).start()
             except Exception as e:
                 print(f"Error in monitor loop: {e}")
                 
-            time.sleep(1.0)
+            time.sleep(self.refresh_interval)
 
     def get_live_metrics(self):
         with self.lock:
@@ -673,22 +731,99 @@ class SystemMonitor:
 
     def _update_process_cache(self):
         processes = []
-        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'num_threads', 'status', 'exe']):
+        curr_time = time.time()
+        
+        # We need to know system download/upload rates to distribute them
+        # Let's get system speeds from self.live_metrics
+        with self.lock:
+            sys_up = self.live_metrics.get("net_upload_speed", 0.0)
+            sys_down = self.live_metrics.get("net_download_speed", 0.0)
+            
+        # Get active PIDs and stats
+        raw_procs = []
+        total_connections = 0
+        
+        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'num_threads', 'status', 'exe', 'io_counters']):
             try:
                 pinfo = proc.info
-                mem_bytes = pinfo['memory_info'].rss if pinfo.get('memory_info') else 0
-                mem_mb = round(mem_bytes / (1024**2), 2)
-                processes.append({
-                    "pid": pinfo["pid"],
+                pid = pinfo["pid"]
+                
+                # Retrieve connection count (avoiding deprecation warnings & exceptions)
+                try:
+                    # Using net_connections() as connections() is deprecated in newer psutil
+                    conns = len(proc.net_connections())
+                except Exception:
+                    conns = 0
+                
+                total_connections += conns
+                
+                raw_procs.append({
+                    "pid": pid,
                     "name": pinfo["name"] or "Unknown",
                     "cpu_usage": round(pinfo["cpu_percent"] or 0, 1),
-                    "memory_mb": mem_mb,
+                    "memory_info": pinfo["memory_info"],
                     "threads": pinfo["num_threads"] or 1,
                     "status": pinfo["status"] or "unknown",
-                    "path": pinfo["exe"] or "N/A"
+                    "path": pinfo["exe"] or "N/A",
+                    "io_counters": pinfo["io_counters"],
+                    "connections": conns
                 })
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
+                
+        # Calculate I/O speeds
+        new_prev_io = {}
+        for p in raw_procs:
+            pid = p["pid"]
+            io = p["io_counters"]
+            
+            read_speed = 0.0
+            write_speed = 0.0
+            
+            if io:
+                read_bytes = io.read_bytes
+                write_bytes = io.write_bytes
+                
+                if pid in self.prev_proc_io:
+                    prev_t, prev_r, prev_w = self.prev_proc_io[pid]
+                    dt = curr_time - prev_t
+                    if dt > 0:
+                        read_speed = max(0.0, (read_bytes - prev_r) / dt)
+                        write_speed = max(0.0, (write_bytes - prev_w) / dt)
+                
+                new_prev_io[pid] = (curr_time, read_bytes, write_bytes)
+            
+            # Distribute network speed based on connections fraction
+            net_up_speed = 0.0
+            net_down_speed = 0.0
+            if total_connections > 0 and p["connections"] > 0:
+                fraction = p["connections"] / total_connections
+                net_up_speed = sys_up * fraction
+                net_down_speed = sys_down * fraction
+                
+            mem_bytes = p["memory_info"].rss if p["memory_info"] else 0
+            mem_mb = round(mem_bytes / (1024**2), 2)
+            
+            vms_bytes = p["memory_info"].vms if p["memory_info"] else 0
+            commit_mb = round(vms_bytes / (1024**2), 2)
+            
+            processes.append({
+                "pid": pid,
+                "name": p["name"],
+                "cpu_usage": p["cpu_usage"],
+                "memory_mb": mem_mb, # working set / rss
+                "commit_mb": commit_mb, # commit bytes
+                "threads": p["threads"],
+                "status": p["status"],
+                "path": p["path"],
+                "read_speed": round(read_speed, 1),
+                "write_speed": round(write_speed, 1),
+                "net_up_speed": round(net_up_speed, 1),
+                "net_down_speed": round(net_down_speed, 1),
+                "connections": p["connections"]
+            })
+            
+        self.prev_proc_io = new_prev_io
         with self.lock:
             self.process_cache = processes
 

@@ -164,7 +164,10 @@ async def websocket_endpoint(websocket: WebSocket):
             while True:
                 data = await websocket.receive_json()
                 if data.get("action") == "set_interval":
-                    refresh_interval = max(0.1, float(data.get("value", 1.0)))
+                    val = float(data.get("value", 1.0))
+                    refresh_interval = max(0.1, val)
+                    if monitor:
+                        monitor.refresh_interval = refresh_interval
         except WebSocketDisconnect:
             pass
         except Exception:
