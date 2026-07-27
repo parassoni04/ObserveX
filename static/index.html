@@ -99,6 +99,22 @@
                     </svg>
                     <span>Windows Event Logs</span>
                 </a>
+                <a href="#" class="nav-link" data-view="analytics">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                        <polyline points="17 6 23 6 23 12"/>
+                    </svg>
+                    <span>Analytics & Trends</span>
+                </a>
+                <a href="#" class="nav-link" data-view="alerts">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                    </svg>
+                    <span>Alert History</span>
+                </a>
                 <a href="#" class="nav-link" data-view="devices">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -107,6 +123,7 @@
                         <line x1="12" y1="17" x2="12" y2="21"/>
                     </svg>
                     <span>Devices</span>
+                </a>
                 <a href="#" class="nav-link" data-view="admin" id="nav-link-admin" style="display: none;">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -164,6 +181,7 @@
                     <h2 id="view-title">Dashboard Overview</h2>
                     <p id="view-subtitle" class="text-secondary">Real-time system load and execution health.</p>
                 </div>
+
                 <div class="system-time-badge">
                     <div class="time-item">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
@@ -798,6 +816,142 @@
                     <button class="pagination-btn" id="event-prev-page" disabled>&laquo; Prev</button>
                     <span class="pagination-info" id="event-page-info">Page 1 of 1</span>
                     <button class="pagination-btn" id="event-next-page" disabled>Next &raquo;</button>
+                </div>
+            </section>
+
+            <!-- Analytics & Trends View -->
+            <section id="view-analytics" class="content-view">
+                <!-- Filter Bar & Time-Range Picker -->
+                <div class="analytics-toolbar glass-panel">
+                    <div class="range-selector-group">
+                        <span class="toolbar-label">Time Window:</span>
+                        <button class="time-btn" data-period="15m">15m</button>
+                        <button class="time-btn active" data-period="1h">1h</button>
+                        <button class="time-btn" data-period="6h">6h</button>
+                        <button class="time-btn" data-period="24h">24h</button>
+                        <button class="time-btn" data-period="7d">7d</button>
+                    </div>
+                </div>
+
+                <!-- Trend Summary Cards Grid -->
+                <div class="analytics-summary-grid">
+                    <div class="analytics-card glass-panel">
+                        <div class="analytics-card-header">
+                            <span class="card-label">CPU Average / Trend</span>
+                            <span class="trend-badge" id="trend-cpu-badge">0%</span>
+                        </div>
+                        <div class="analytics-card-value" id="trend-cpu-avg">0%</div>
+                        <div class="analytics-card-sub">
+                            <span>Min: <strong id="trend-cpu-min">0%</strong></span>
+                            <span>Max: <strong id="trend-cpu-max">0%</strong></span>
+                        </div>
+                    </div>
+                    <div class="analytics-card glass-panel">
+                        <div class="analytics-card-header">
+                            <span class="card-label">RAM Average</span>
+                            <span class="trend-badge neutral" id="trend-ram-badge">Stable</span>
+                        </div>
+                        <div class="analytics-card-value" id="trend-ram-avg">0%</div>
+                        <div class="analytics-card-sub">
+                            <span>Min: <strong id="trend-ram-min">0%</strong></span>
+                            <span>Max: <strong id="trend-ram-max">0%</strong></span>
+                        </div>
+                    </div>
+                    <div class="analytics-card glass-panel">
+                        <div class="analytics-card-header">
+                            <span class="card-label">Peak Storage Transfer Rate</span>
+                        </div>
+                        <div class="analytics-card-value" id="trend-disk-max">0 MB/s</div>
+                        <div class="analytics-card-sub">
+                            <span>Read Max: <strong id="trend-disk-read-max">0 MB/s</strong></span>
+                            <span>Write Max: <strong id="trend-disk-write-max">0 MB/s</strong></span>
+                        </div>
+                    </div>
+                    <div class="analytics-card glass-panel">
+                        <div class="analytics-card-header">
+                            <span class="card-label">Peak Network Rate</span>
+                        </div>
+                        <div class="analytics-card-value" id="trend-net-max">0 MB/s</div>
+                        <div class="analytics-card-sub">
+                            <span>Recv Max: <strong id="trend-net-down-max">0 MB/s</strong></span>
+                            <span>Sent Max: <strong id="trend-net-up-max">0 MB/s</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Historical Charts Grid -->
+                <div class="charts-grid analytics-charts">
+                    <div class="chart-card glass-panel">
+                        <div class="chart-header">
+                            <h3>CPU Usage Trend (%)</h3>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="chart-analytics-cpu"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card glass-panel">
+                        <div class="chart-header">
+                            <h3>RAM Usage Trend (%)</h3>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="chart-analytics-ram"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Log Correlation & Anomaly Inspector Panel -->
+                <div class="correlation-panel glass-panel">
+                    <div class="correlation-header">
+                        <h3>
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                            Log Correlation & Anomaly Inspector
+                        </h3>
+                        <span class="text-secondary font-mini" id="correlation-timestamp-label">Click any point on a trend chart or alert below to inspect correlated events</span>
+                    </div>
+                    <div class="correlation-body" id="correlation-body">
+                        <div class="no-correlation-msg">Select a specific timestamp or alert to view correlated processes and system logs.</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Alert History View -->
+            <section id="view-alerts" class="content-view">
+                <div class="table-toolbar glass-panel">
+                    <div class="filter-group">
+                        <select id="alert-filter-severity" class="custom-select">
+                            <option value="all">All Severities</option>
+                            <option value="critical">Critical Only</option>
+                            <option value="warning">Warning Only</option>
+                        </select>
+                    </div>
+                    <div class="toolbar-actions">
+                        <button class="btn btn-secondary btn-sm" id="btn-clear-alerts">Clear Alert History</button>
+                    </div>
+                </div>
+
+                <div class="table-container glass-panel">
+                    <table class="data-table" id="alerts-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Severity</th>
+                                <th>Metric Category</th>
+                                <th>Alert Details</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alerts-table-body">
+                            <tr>
+                                <td colspan="5" class="loading-cell">
+                                    <div class="spinner"></div>
+                                    <span>Loading alert history...</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
 

@@ -216,3 +216,54 @@ class WSSubscribe(BaseModel):
     action: str = "subscribe"       # subscribe / unsubscribe / set_interval
     device_id: Optional[int] = None
     value: Optional[float] = None   # for set_interval
+
+
+# ── Alert Schemas ──
+
+class AlertCreateRequest(BaseModel):
+    device_id: int
+    alert_type: str                  # cpu, ram, disk, temp, network
+    severity: str                    # warning, critical
+    message: str
+
+
+class AlertOut(BaseModel):
+    id: int
+    device_id: int
+    alert_type: str
+    severity: str
+    message: str
+    timestamp: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Analytics & Correlation Schemas ──
+
+class TrendSummaryResponse(BaseModel):
+    device_id: int
+    period: str                      # 1h, 6h, 24h, 7d
+    snapshot_count: int
+    cpu_avg: float
+    cpu_min: float
+    cpu_max: float
+    cpu_trend_slope: float           # percentage change over period
+    ram_avg: float
+    ram_min: float
+    ram_max: float
+    disk_read_max: float
+    disk_write_max: float
+    net_download_max: float
+    net_upload_max: float
+
+
+class LogCorrelationResponse(BaseModel):
+    device_id: int
+    target_timestamp: str
+    window_minutes: int
+    metrics_at_timestamp: Optional[dict[str, Any]] = None
+    events: list[dict[str, Any]] = []
+    processes: list[dict[str, Any]] = []
+    alerts: list[AlertOut] = []
+

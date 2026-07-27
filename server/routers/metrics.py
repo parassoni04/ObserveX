@@ -119,3 +119,131 @@ async def get_metric_summary(
         max_gpu=round(row.max_gpu, 2) if row.max_gpu else None,
         snapshot_count=row.snapshot_count or 0,
     )
+
+
+@router.get("/trends")
+async def get_metric_trends(
+    device_id: int,
+    period: str = Query(default="24h", pattern="^(1h|6h|24h|7d)$"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get statistical trend analysis (min, max, avg, slope) for a device."""
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    period_minutes = {"1h": 60, "6h": 360, "24h": 1440, "7d": 10080}[period]
+    since = datetime.datetime.utcnow() - datetime.timedelta(minutes=period_minutes)
+
+    result = await db.execute(
+        select(MetricSnapshot)
+        .where(MetricSnapshot.device_id == device_id, MetricSnapshot.timestamp >= since)
+        .order_by(MetricSnapshot.timestamp.asc())
+    )
+    snapshots = result.scalars().all()
+
+    if not snapshots:
+        return {
+            "device_id": device_id,
+            "period": period,
+            "snapshot_count": 0,
+            "cpu_avg": 0, "cpu_min": 0, "cpu_max": 0, "cpu_trend_slope": 0,
+            "ram_avg": 0, "ram_min": 0, "ram_max": 0,
+            "disk_read_max": 0, "disk_write_max": 0,
+            "net_download_max": 0, "net_upload_max": 0
+        }
+
+    cpus = [s.metrics.get("cpu_usage", 0) for s in snapshots if "cpu_usage" in s.metrics]
+    rams = [s.metrics.get("ram_usage_percent", 0) for s in snapshots if "ram_usage_percent" in s.metrics]
+    disk_reads = [s.metrics.get("disk_read_speed", 0) for s in snapshots]
+    disk_writes = [s.metrics.get("disk_write_speed", 0) for s in snapshots]
+    net_down = [s.metrics.get("net_download_speed", 0) for s in snapshots]
+    net_up = [s.metrics.get("net_upload_speed", 0) for s in snapshots]
+
+    # Calculate slope: difference between first half avg and second half avg
+    slope = 0.0
+    if len(cpus) >= 4:
+        half = len(cpus) // 2
+        first_half_avg = sum(cpus[:half]) / half
+        second_half_avg = sum(cpus[half:]) / (len(cpus) - half)
+        slope = round(second_half_avg - first_half_avg, 2)
+
+    return {
+        "device_id": device_id,
+        "period": period,
+        "snapshot_count": len(snapshots),
+        "cpu_avg": round(sum(cpus) / len(cpus), 1) if cpus else 0,
+        "cpu_min": round(min(cpus), 1) if cpus else 0,
+        "cpu_max": round(max(cpus), 1) if cpus else 0,
+        "cpu_trend_slope": slope,
+        "ram_avg": round(sum(rams) / len(rams), 1) if rams else 0,
+        "ram_min": round(min(rams), 1) if rams else 0,
+        "ram_max": round(max(rams), 1) if rams else 0,
+        "disk_read_max": round(max(disk_reads), 1) if disk_reads else 0,
+        "disk_write_max": round(max(disk_writes), 1) if disk_writes else 0,
+        "net_download_max": round(max(net_down), 1) if net_down else 0,
+        "net_upload_max": round(max(net_up), 1) if net_up else 0,
+    }
+
+
+@router.get("/correlate")
+async def get_log_correlation(
+    device_id: int,
+    timestamp: str = Query(description="Target ISO timestamp or time string"),
+    window_minutes: int = Query(default=5, ge=1, le=60),
+    db: AsyncSession = Depends(get_db),
+):
+    """Correlate metrics, Windows event logs, and processes around a specific target timestamp."""
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    try:
+        dt = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except Exception:
+        dt = datetime.datetime.utcnow()
+
+    start_t = dt - datetime.timedelta(minutes=window_minutes)
+    end_t = dt + datetime.timedelta(minutes=window_minutes)
+
+    # Fetch metric snapshots in window
+    result = await db.execute(
+        select(MetricSnapshot)
+        .where(
+            MetricSnapshot.device_id == device_id,
+            MetricSnapshot.timestamp >= start_t,
+            MetricSnapshot.timestamp <= end_t
+        )
+        .order_by(MetricSnapshot.timestamp.asc())
+    )
+    snapshots = result.scalars().all()
+
+    # Get cached processes and events from WebSocket hub
+    from server.websockets.hub import connection_manager
+    cached_events = connection_manager.device_events.get(device_id, [])
+    cached_procs = connection_manager.device_processes.get(device_id, [])
+
+    # Fetch historic alerts in window
+    from server.models import Alert
+    alert_res = await db.execute(
+        select(Alert)
+        .where(
+            Alert.device_id == device_id,
+            Alert.timestamp >= start_t,
+            Alert.timestamp <= end_t
+        )
+        .order_by(Alert.timestamp.desc())
+    )
+    alerts = alert_res.scalars().all()
+
+    closest_metrics = snapshots[0].metrics if snapshots else connection_manager.latest_metrics.get(device_id, {})
+
+    return {
+        "device_id": device_id,
+        "target_timestamp": timestamp,
+        "window_minutes": window_minutes,
+        "metrics_at_timestamp": closest_metrics,
+        "events": cached_events[:50],
+        "processes": cached_procs[:30],
+        "alerts": alerts,
+    }

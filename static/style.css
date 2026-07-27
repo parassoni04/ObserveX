@@ -79,6 +79,7 @@ body {
 /* Sidebar Styling */
 .sidebar {
     width: 260px;
+    height: 100vh;
     background-color: var(--bg-sidebar);
     border-right: 1px solid var(--card-border);
     display: flex;
@@ -86,6 +87,7 @@ body {
     padding: 24px;
     flex-shrink: 0;
     z-index: 100;
+    overflow-y: auto;
     transition: var(--transition-smooth);
 }
 
@@ -129,6 +131,32 @@ body {
     flex-direction: column;
     gap: 8px;
     flex-grow: 1;
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 4px;
+    margin-bottom: 16px;
+}
+
+/* Custom Scrollbar for Left Menu */
+.nav-menu::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.nav-menu::-webkit-scrollbar-track,
+.sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.nav-menu::-webkit-scrollbar-thumb,
+.sidebar::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 4px;
+}
+
+.nav-menu::-webkit-scrollbar-thumb:hover,
+.sidebar::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-blue);
 }
 
 .nav-link {
@@ -2363,6 +2391,207 @@ th.sort-desc .sort-indicator::after {
     background: var(--input-bg);
     border: 1px solid var(--input-border);
     color: var(--accent-blue);
+}
+
+/* ==========================================================================
+   Part 4 – Observability & Analytics Styles
+   ========================================================================== */
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: auto;
+    margin-left: 20px;
+}
+
+.btn-sm {
+    padding: 6px 12px !important;
+    font-size: 0.75rem !important;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.analytics-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+}
+
+.range-selector-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toolbar-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-right: 6px;
+}
+
+.time-btn {
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--card-border);
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.time-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+.time-btn.active {
+    background: var(--accent-blue);
+    color: #fff;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 10px rgba(var(--accent-blue-rgb), 0.3);
+}
+
+.analytics-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.analytics-card {
+    padding: 16px 20px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.analytics-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.card-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+.trend-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: rgba(var(--accent-green-rgb), 0.15);
+    color: var(--accent-green);
+}
+
+.trend-badge.negative {
+    background: rgba(var(--accent-red-rgb), 0.15);
+    color: var(--accent-red);
+}
+
+.trend-badge.neutral {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+}
+
+.analytics-card-value {
+    font-size: 1.6rem;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.analytics-card-sub {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.correlation-panel {
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.correlation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--card-border);
+    padding-bottom: 12px;
+}
+
+.correlation-header h3 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+}
+
+.no-correlation-msg {
+    padding: 30px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* Alert Severity Badges */
+.severity-badge {
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.severity-badge.critical {
+    background: rgba(var(--accent-red-rgb), 0.15);
+    color: var(--accent-red);
+    border: 1px solid rgba(var(--accent-red-rgb), 0.3);
+}
+
+.severity-badge.warning {
+    background: rgba(var(--accent-yellow-rgb), 0.15);
+    color: var(--accent-yellow);
+    border: 1px solid rgba(var(--accent-yellow-rgb), 0.3);
+}
+
+/* @media print for Executive PDF Reports */
+@media print {
+    body {
+        background: #fff !important;
+        color: #000 !important;
+    }
+    aside, .content-header, .analytics-toolbar, .table-toolbar, #toast-container {
+        display: none !important;
+    }
+    .main-content {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .glass-panel {
+        background: #fff !important;
+        border: 1px solid #ddd !important;
+        box-shadow: none !important;
+        color: #000 !important;
+    }
 }
 
 
