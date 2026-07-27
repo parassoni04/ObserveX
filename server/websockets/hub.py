@@ -3,7 +3,7 @@ import datetime
 import json
 from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
-from server.database import async_session_factory
+import server.database as db
 from server.models import MetricSnapshot
 
 
@@ -64,10 +64,10 @@ class ConnectionManager:
         await self._broadcast_to_dashboards(device_id, data)
 
     async def _store_snapshot(self, device_id: int, metrics: dict):
-        """Persist a metric snapshot to PostgreSQL."""
+        """Persist a metric snapshot to database."""
         try:
             async with self._db_write_lock:
-                async with async_session_factory() as session:
+                async with db.async_session_factory() as session:
                     snapshot = MetricSnapshot(
                         device_id=device_id,
                         timestamp=datetime.datetime.utcnow(),

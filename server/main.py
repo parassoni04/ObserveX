@@ -13,9 +13,44 @@ from fastapi.staticfiles import StaticFiles
 
 from server.config import settings
 from server.database import init_db, close_db
-from server.routers import devices, metrics, agents
+from server.routers import devices, metrics, agents, auth, admin
 from server.websockets.hub import connection_manager
 from server.tasks import cleanup_old_metrics, mark_stale_devices_offline
+
+
+async def seed_initial_data():
+    """Seed default organization and superadmin account if missing."""
+    from server.database import async_session_factory
+    from server.models import User, Organization
+    from server.auth import hash_password
+    from sqlalchemy import select
+
+    async with async_session_factory() as session:
+        # Ensure default Organization
+        org_res = await session.execute(select(Organization).limit(1))
+        default_org = org_res.scalar_one_or_none()
+        if not default_org:
+            default_org = Organization(name="ObserveX Enterprise")
+            session.add(default_org)
+            await session.commit()
+            await session.refresh(default_org)
+
+        # Ensure default Admin user
+        admin_res = await session.execute(select(User).where(User.role == "admin").limit(1))
+        admin_user = admin_res.scalar_one_or_none()
+        if not admin_user:
+            admin_user = User(
+                email="admin@observex.local",
+                username="admin",
+                full_name="System Administrator",
+                hashed_password=hash_password("admin123"),
+                role="admin",
+                is_active=True,
+                organization_id=default_org.id
+            )
+            session.add(admin_user)
+            await session.commit()
+            print("[ObserveX Server] Default admin created: admin@observex.local / admin123")
 
 
 @asynccontextmanager
@@ -25,6 +60,8 @@ async def lifespan(app: FastAPI):
     print("[ObserveX Server] Initializing database...")
     await init_db()
     print("[ObserveX Server] Database ready.")
+
+    await seed_initial_data()
 
     # Launch background tasks
     cleanup_task = asyncio.create_task(cleanup_old_metrics())
@@ -41,8 +78,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ObserveX Server",
-    version="2.0.0",
-    description="Centralized monitoring backend for ObserveX agents",
+    version="3.0.0",
+    description="Centralized monitoring backend for ObserveX agents with RBAC & Auth",
     lifespan=lifespan,
 )
 
@@ -57,6 +94,8 @@ app.add_middleware(
 )
 
 # ── REST Routers ──
+app.include_router(auth.router)
+app.include_router(admin.router)
 app.include_router(devices.router)
 app.include_router(metrics.router)
 app.include_router(agents.router)
@@ -197,6 +236,7 @@ if _static_dir.exists():
 
 if __name__ == "__main__":
     print(f"[ObserveX Server] Starting on {settings.SERVER_HOST}:{settings.SERVER_PORT}")
+    print(f"[ObserveX Server] Dashboard UI accessible at: http://localhost:{settings.SERVER_PORT} or http://127.0.0.1:{settings.SERVER_PORT}")
     uvicorn.run(
         "server.main:app",
         host=settings.SERVER_HOST,

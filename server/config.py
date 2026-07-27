@@ -16,6 +16,9 @@ class ServerSettings(BaseSettings):
     SERVER_PORT: int = 8000
     METRIC_RETENTION_DAYS: int = 7
     CORS_ORIGINS: str = "*"
+    JWT_SECRET_KEY: str = "change-me-to-a-secure-jwt-secret-key-12345"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
     class Config:
         env_file = str(_env_path)

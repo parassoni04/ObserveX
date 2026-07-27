@@ -13,7 +13,22 @@ from pydantic import BaseModel
 
 from monitor import SystemMonitor
 
-app = FastAPI(title="ObserveX Backend", version="1.0.0")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global monitor, app_started
+    monitor = SystemMonitor()
+    app_started = True
+    # Start heartbeat checker thread
+    threading.Thread(target=heartbeat_watcher, daemon=True).start()
+    # Launch browser window after a brief delay
+    threading.Thread(target=launch_browser, daemon=True).start()
+    yield
+    if monitor:
+        monitor.stop()
+
+app = FastAPI(title="ObserveX Backend", version="1.0.0", lifespan=lifespan)
 monitor = None
 last_heartbeat = time.time()
 server_port = 8124
@@ -65,21 +80,27 @@ def set_startup_status(enabled: bool):
         except OSError:
             pass
 
-@app.on_event("startup")
-def startup_event():
-    global monitor, app_started
-    monitor = SystemMonitor()
-    app_started = True
-    # Start heartbeat checker thread
-    threading.Thread(target=heartbeat_watcher, daemon=True).start()
-    # Launch browser window after a brief delay
-    threading.Thread(target=launch_browser, daemon=True).start()
 
-@app.on_event("shutdown")
-def shutdown_event():
-    global monitor
-    if monitor:
-        monitor.stop()
+
+@app.middleware("http")
+async def update_heartbeat_middleware(request, call_next):
+    global last_heartbeat
+    last_heartbeat = time.time()
+    return await call_next(request)
+
+
+@app.get("/api/heartbeat")
+def heartbeat_get():
+    global last_heartbeat
+    last_heartbeat = time.time()
+    return {"status": "ok"}
+
+@app.post("/api/heartbeat")
+def heartbeat_post():
+    global last_heartbeat
+    last_heartbeat = time.time()
+    return {"status": "ok"}
+
 
 @app.get("/")
 def read_root():
@@ -121,11 +142,7 @@ def get_event_logs(limit: int = 1000):
 def get_processes():
     return monitor.get_process_list() if monitor else []
 
-@app.post("/api/heartbeat")
-def post_heartbeat():
-    global last_heartbeat
-    last_heartbeat = time.time()
-    return {"status": "ok"}
+
 
 @app.get("/api/startup")
 def get_startup():
@@ -192,12 +209,12 @@ def heartbeat_watcher():
     if "--no-shutdown" in sys.argv:
         print("ObserveX: Heartbeat watcher disabled via --no-shutdown CLI option.")
         return
-    # Allow 15 seconds for initial connection
-    time.sleep(15.0)
+    # Allow 30 seconds for initial connection
+    time.sleep(30.0)
     while True:
         # Check last heartbeat. If closed, exit.
-        if time.time() - last_heartbeat > 7.0:
-            print("ObserveX: No heartbeat received from frontend for 7 seconds. Shutting down system server.")
+        if time.time() - last_heartbeat > 12.0:
+            print("ObserveX: No heartbeat received from frontend for 12 seconds. Shutting down system server.")
             os._exit(0)
         time.sleep(1.0)
 

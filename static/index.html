@@ -107,6 +107,12 @@
                         <line x1="12" y1="17" x2="12" y2="21"/>
                     </svg>
                     <span>Devices</span>
+                <a href="#" class="nav-link" data-view="admin" id="nav-link-admin" style="display: none;">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span>Admin Portal</span>
                 </a>
                 <a href="#" class="nav-link" data-view="settings">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
@@ -131,6 +137,22 @@
                     <div class="health-percentage" id="sidebar-health-val">--%</div>
                 </div>
                 <div class="health-text-lbl">Device Health</div>
+            </div>
+
+            <!-- User Profile Widget -->
+            <div class="user-profile-panel" id="user-profile-panel" style="display: none;">
+                <div class="user-avatar" id="user-avatar-initials">U</div>
+                <div class="user-info">
+                    <div class="user-name" id="user-display-name">User Name</div>
+                    <span class="user-role-badge" id="user-display-role">USER</span>
+                </div>
+                <button class="logout-btn" id="logout-btn" title="Log Out">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                </button>
             </div>
         </aside>
 
@@ -789,6 +811,102 @@
                 </div>
             </section>
 
+            <!-- Admin View -->
+            <section id="view-admin" class="content-view">
+                <!-- Organization Overview Cards -->
+                <div class="admin-stats-grid">
+                    <div class="admin-stat-card glass-panel">
+                        <div class="stat-icon users-icon">
+                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <span class="stat-lbl">Registered Users</span>
+                            <h3 class="stat-val" id="admin-stat-users">0</h3>
+                        </div>
+                    </div>
+                    <div class="admin-stat-card glass-panel">
+                        <div class="stat-icon devices-icon">
+                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                                <line x1="8" y1="21" x2="16" y2="21"/>
+                                <line x1="12" y1="17" x2="12" y2="21"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <span class="stat-lbl">Managed Devices</span>
+                            <h3 class="stat-val" id="admin-stat-devices">0</h3>
+                        </div>
+                    </div>
+                    <div class="admin-stat-card glass-panel">
+                        <div class="stat-icon online-icon">
+                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <span class="stat-lbl">Active Online Rate</span>
+                            <h3 class="stat-val" id="admin-stat-online">0 / 0</h3>
+                        </div>
+                    </div>
+                    <div class="admin-stat-card glass-panel">
+                        <div class="stat-icon health-icon">
+                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <span class="stat-lbl">Avg Health Score</span>
+                            <h3 class="stat-val" id="admin-stat-health">100%</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- User Management Table Panel -->
+                <div class="admin-panel glass-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Enterprise Users & Permissions</h3>
+                            <p class="text-secondary font-mini">Manage accounts, assign roles (Admin/User), and assign devices.</p>
+                        </div>
+                        <button class="btn btn-primary" id="btn-create-user">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19"/>
+                                <line x1="5" y1="12" x2="19" y2="12"/>
+                            </svg>
+                            <span>Add User</span>
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="admin-users-table">
+                            <thead>
+                                <tr>
+                                    <th>User Account</th>
+                                    <th>Email Address</th>
+                                    <th>Full Name</th>
+                                    <th>Role</th>
+                                    <th>Account Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-users-table-body">
+                                <tr>
+                                    <td colspan="6" class="loading-cell">
+                                        <div class="spinner"></div>
+                                        <span>Loading enterprise user list...</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
             <!-- Settings View -->
             <section id="view-settings" class="content-view">
                 <div class="settings-grid">
@@ -893,6 +1011,137 @@
             </section>
         </main>
     </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         Authentication Overlay Modal (Login / Register)
+         ══════════════════════════════════════════════════════════ -->
+    <div class="modal-backdrop" id="auth-modal" style="display: none;">
+        <div class="modal-card glass-panel">
+            <div class="auth-header">
+                <div class="logo-icon large">
+                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                        <path d="M12 6v6l4 2"/>
+                    </svg>
+                </div>
+                <h2>Observe<span>X</span> Enterprise</h2>
+                <p class="text-secondary font-mini">Sign in to access your monitoring dashboard</p>
+            </div>
+
+            <!-- Tab Switcher -->
+            <div class="auth-tabs">
+                <button class="auth-tab-btn active" id="auth-tab-login">Sign In</button>
+                <button class="auth-tab-btn" id="auth-tab-register">Register Account</button>
+            </div>
+
+            <div class="auth-error-msg" id="auth-error-msg" style="display: none;"></div>
+
+            <!-- Login Form -->
+            <form id="form-login" class="auth-form active-form">
+                <div class="form-group">
+                    <label for="login-username">Username or Email</label>
+                    <input type="text" id="login-username" class="custom-input" placeholder="admin@observex.local" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" class="custom-input" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+            </form>
+
+            <!-- Register Form -->
+            <form id="form-register" class="auth-form" style="display: none;">
+                <div class="form-group">
+                    <label for="reg-fullname">Full Name</label>
+                    <input type="text" id="reg-fullname" class="custom-input" placeholder="John Doe">
+                </div>
+                <div class="form-group">
+                    <label for="reg-email">Email Address</label>
+                    <input type="email" id="reg-email" class="custom-input" placeholder="john@company.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="reg-username">Username</label>
+                    <input type="text" id="reg-username" class="custom-input" placeholder="johndoe" required>
+                </div>
+                <div class="form-group">
+                    <label for="reg-password">Password</label>
+                    <input type="password" id="reg-password" class="custom-input" placeholder="••••••••" required minlength="6">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Register Account</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         Admin: Create User Modal
+         ══════════════════════════════════════════════════════════ -->
+    <div class="modal-backdrop" id="create-user-modal" style="display: none;">
+        <div class="modal-card glass-panel">
+            <div class="modal-header">
+                <h3>Add New Enterprise User</h3>
+                <span class="modal-close" id="create-user-modal-close">&times;</span>
+            </div>
+            <form id="form-create-user">
+                <div class="form-group">
+                    <label for="admin-user-fullname">Full Name</label>
+                    <input type="text" id="admin-user-fullname" class="custom-input" placeholder="Jane Smith">
+                </div>
+                <div class="form-group">
+                    <label for="admin-user-email">Email Address</label>
+                    <input type="email" id="admin-user-email" class="custom-input" placeholder="jane@company.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="admin-user-username">Username</label>
+                    <input type="text" id="admin-user-username" class="custom-input" placeholder="janesmith" required>
+                </div>
+                <div class="form-group">
+                    <label for="admin-user-password">Password</label>
+                    <input type="password" id="admin-user-password" class="custom-input" placeholder="••••••••" required minlength="6">
+                </div>
+                <div class="form-group">
+                    <label for="admin-user-role">Role Permission</label>
+                    <select id="admin-user-role" class="custom-select">
+                        <option value="user">Standard User (View Assigned Devices Only)</option>
+                        <option value="admin">Administrator (Full Access & Management)</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-create-user">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         Admin: Assign Device Modal
+         ══════════════════════════════════════════════════════════ -->
+    <div class="modal-backdrop" id="assign-device-modal" style="display: none;">
+        <div class="modal-card glass-panel">
+            <div class="modal-header">
+                <h3>Assign Device to User</h3>
+                <span class="modal-close" id="assign-device-modal-close">&times;</span>
+            </div>
+            <form id="form-assign-device">
+                <input type="hidden" id="assign-device-id">
+                <div class="form-group">
+                    <label>Target Device</label>
+                    <div id="assign-device-name-display" class="device-display-box font-medium">Device Name</div>
+                </div>
+                <div class="form-group">
+                    <label for="assign-target-user">Assign to User</label>
+                    <select id="assign-target-user" class="custom-select">
+                        <option value="0">Unassigned (Organization Pool)</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-assign-device">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Assignment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="/static/app.js"></script>
 </body>
 

@@ -126,4 +126,10 @@ class AgentSender:
 
     @property
     def is_ws_connected(self) -> bool:
-        return self._ws is not None and self._ws.open
+        if self._ws is None:
+            return False
+        if hasattr(self._ws, "open"):
+            return self._ws.open
+        if hasattr(self._ws, "closed"):
+            return not self._ws.closed
+        return True

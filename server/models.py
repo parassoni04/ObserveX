@@ -9,6 +9,44 @@ class Base(DeclarativeBase):
     pass
 
 
+class Organization(Base):
+    """An enterprise organization containing users and devices."""
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    # Relationships
+    users = relationship("User", back_populates="organization", cascade="all, delete-orphan")
+    devices = relationship("Device", back_populates="organization")
+
+    def __repr__(self):
+        return f"<Organization id={self.id} name={self.name}>"
+
+
+class User(Base):
+    """A user account with authentication and RBAC role (admin or user)."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    username = Column(String(100), unique=True, index=True, nullable=False)
+    full_name = Column(String(255), nullable=True)
+    hashed_password = Column(String(255), nullable=False)
+    role = Column(String(50), default="user", nullable=False)  # 'admin' or 'user'
+    is_active = Column(Boolean, default=True, nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    # Relationships
+    organization = relationship("Organization", back_populates="users")
+    assigned_devices = relationship("Device", back_populates="assigned_user")
+
+    def __repr__(self):
+        return f"<User id={self.id} username={self.username} role={self.role}>"
+
+
 class Device(Base):
     """A registered agent device."""
     __tablename__ = "devices"
@@ -22,7 +60,12 @@ class Device(Base):
     last_seen = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
     is_online = Column(Boolean, default=False)
 
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    assigned_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
     # Relationships
+    organization = relationship("Organization", back_populates="devices")
+    assigned_user = relationship("User", back_populates="assigned_devices")
     static_info = relationship("DeviceStaticInfo", back_populates="device", uselist=False, cascade="all, delete-orphan")
     metric_snapshots = relationship("MetricSnapshot", back_populates="device", cascade="all, delete-orphan")
     alerts = relationship("Alert", back_populates="device", cascade="all, delete-orphan")

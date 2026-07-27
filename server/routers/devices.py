@@ -1,19 +1,49 @@
 import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.database import get_db
-from server.models import Device, DeviceStaticInfo, DeviceSoftware
-from server.schemas import DeviceOut, DeviceStatusOut, StaticInfoOut, SoftwareItem
+from server.models import Device, DeviceStaticInfo, DeviceSoftware, User
+from server.schemas import DeviceOut, DeviceStatusOut, StaticInfoOut, SoftwareItem, DeviceAssignRequest
+from server.auth import get_current_user, require_role, security
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 
 
+async def get_optional_current_user(
+    credentials=Depends(security),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[User]:
+    """Helper to get current user if Bearer token is provided, or None if unauthenticated."""
+    if not credentials or not credentials.credentials:
+        return None
+    try:
+        return await get_current_user(credentials, db)
+    except Exception:
+        return None
+
+
 @router.get("", response_model=list[DeviceOut])
-async def list_devices(db: AsyncSession = Depends(get_db)):
-    """List all registered devices."""
-    result = await db.execute(select(Device).order_by(Device.hostname))
+async def list_devices(
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user)
+):
+    """List registered devices. Admins see all devices; non-admin users see only their assigned devices."""
+    if current_user and current_user.role == "admin":
+        stmt = select(Device).order_by(Device.hostname)
+    elif current_user:
+        # Non-admin user: only see devices assigned to them or unassigned in their org
+        stmt = select(Device).where(
+            (Device.assigned_user_id == current_user.id) |
+            (Device.assigned_user_id.is_(None) & (Device.organization_id == current_user.organization_id))
+        ).order_by(Device.hostname)
+    else:
+        # Unauthenticated / local mode fallback: return all devices
+        stmt = select(Device).order_by(Device.hostname)
+
+    result = await db.execute(stmt)
     devices = result.scalars().all()
     return devices
 
@@ -27,9 +57,45 @@ async def get_device(device_id: int, db: AsyncSession = Depends(get_db)):
     return device
 
 
+@router.post("/{device_id}/assign", response_model=DeviceOut)
+async def assign_device(
+    device_id: int,
+    req: DeviceAssignRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role(["admin"]))
+):
+    """Assign a device to a specific user and/or organization (Admin only)."""
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    if req.assigned_user_id is not None:
+        if req.assigned_user_id > 0:
+            target_user = await db.get(User, req.assigned_user_id)
+            if not target_user:
+                raise HTTPException(status_code=404, detail="Assigned user not found")
+            device.assigned_user_id = target_user.id
+            if target_user.organization_id:
+                device.organization_id = target_user.organization_id
+        else:
+            # Unassign
+            device.assigned_user_id = None
+
+    if req.organization_id is not None:
+        device.organization_id = req.organization_id if req.organization_id > 0 else None
+
+    await db.commit()
+    await db.refresh(device)
+    return device
+
+
 @router.delete("/{device_id}")
-async def delete_device(device_id: int, db: AsyncSession = Depends(get_db)):
-    """Remove a registered device and all its data."""
+async def delete_device(
+    device_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role(["admin"]))
+):
+    """Remove a registered device and all its data (Admin only)."""
     device = await db.get(Device, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")

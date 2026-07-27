@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 from sqlalchemy import delete
-from server.database import async_session_factory
+import server.database as db
 from server.models import MetricSnapshot, Device
 from server.config import settings
 
@@ -11,7 +11,7 @@ async def cleanup_old_metrics():
     while True:
         try:
             cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=settings.METRIC_RETENTION_DAYS)
-            async with async_session_factory() as session:
+            async with db.async_session_factory() as session:
                 result = await session.execute(
                     delete(MetricSnapshot).where(MetricSnapshot.timestamp < cutoff)
                 )
@@ -32,7 +32,7 @@ async def mark_stale_devices_offline():
         try:
             from sqlalchemy import select, update
             cutoff = datetime.datetime.utcnow() - datetime.timedelta(seconds=30)
-            async with async_session_factory() as session:
+            async with db.async_session_factory() as session:
                 await session.execute(
                     update(Device)
                     .where(Device.is_online == True, Device.last_seen < cutoff)

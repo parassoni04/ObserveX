@@ -26,9 +26,84 @@ class DeviceOut(BaseModel):
     registered_at: Optional[datetime.datetime] = None
     last_seen: Optional[datetime.datetime] = None
     is_online: bool = False
+    organization_id: Optional[int] = None
+    assigned_user_id: Optional[int] = None
 
     class Config:
         from_attributes = True
+
+
+# ── Auth & User Schemas ──
+
+class UserRegisterRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+    full_name: Optional[str] = None
+
+
+class UserLoginRequest(BaseModel):
+    username_or_email: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: "UserOut"
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    username: str
+    full_name: Optional[str] = None
+    role: str
+    is_active: bool
+    organization_id: Optional[int] = None
+    created_at: Optional[datetime.datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserCreateAdmin(BaseModel):
+    email: str
+    username: str
+    password: str
+    full_name: Optional[str] = None
+    role: str = "user"
+    organization_id: Optional[int] = None
+
+
+class UserUpdateAdmin(BaseModel):
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+    organization_id: Optional[int] = None
+
+
+class OrganizationOut(BaseModel):
+    id: int
+    name: str
+    created_at: Optional[datetime.datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class DeviceAssignRequest(BaseModel):
+    assigned_user_id: Optional[int] = None
+    organization_id: Optional[int] = None
+
+
+class OrgOverviewResponse(BaseModel):
+    organization_name: str
+    total_users: int
+    total_devices: int
+    online_devices: int
+    offline_devices: int
+    admin_count: int
+    avg_health_score: float
 
 
 class DeviceStatusOut(BaseModel):

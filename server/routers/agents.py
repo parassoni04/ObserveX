@@ -97,7 +97,8 @@ async def upload_static_info(
     )
     info = result.scalar_one_or_none()
 
-    data = payload.model_dump(exclude_none=True)
+    valid_cols = {c.name for c in DeviceStaticInfo.__table__.columns if c.name not in ("id", "device_id", "updated_at")}
+    data = {k: v for k, v in payload.model_dump(exclude_none=True).items() if k in valid_cols}
 
     if info:
         for k, v in data.items():
