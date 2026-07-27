@@ -93,12 +93,16 @@ async def assign_device(
 async def delete_device(
     device_id: int,
     db: AsyncSession = Depends(get_db),
-    admin_user: User = Depends(require_role(["admin"]))
+    current_user: Optional[User] = Depends(get_optional_current_user)
 ):
-    """Remove a registered device and all its data (Admin only)."""
+    """Remove a registered device and all its data."""
+    if current_user and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin privileges required to remove devices")
+
     device = await db.get(Device, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+
     await db.delete(device)
     await db.commit()
     return {"status": "deleted", "device_id": device_id}

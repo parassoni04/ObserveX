@@ -305,7 +305,7 @@ function renderDevicesView() {
 async function removeDevice(deviceId) {
     if (!confirm('Remove this device and all its historical data?')) return;
     try {
-        const res = await fetch(`/api/v1/devices/${deviceId}`, { method: 'DELETE' });
+        const res = await authFetch(`/api/v1/devices/${deviceId}`, { method: 'DELETE' });
         if (res.ok) {
             showToast('Device Removed', 'Device has been unregistered.', 'success');
             await fetchDeviceList();
@@ -619,6 +619,95 @@ function initEventListeners() {
             });
         });
     }
+    
+
+    // Analytics Time Window Selector Buttons
+    document.querySelectorAll('.time-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            state.analyticsPeriod = btn.getAttribute('data-period');
+            fetchAnalyticsAndTrends();
+        });
+    });
+    
+    // Alert Filter & Clear History
+    const alertSev = document.getElementById('alert-filter-severity');
+    if (alertSev) alertSev.addEventListener('change', fetchAlertHistory);
+    
+    const btnClearAlerts = document.getElementById('btn-clear-alerts');
+    if (btnClearAlerts) {
+        btnClearAlerts.addEventListener('click', async () => {
+            if (!confirm('Clear all historical alert log records?')) return;
+            try {
+                const devId = state.selectedDeviceId;
+                const url = devId ? `/api/v1/alerts?device_id=${devId}` : `/api/v1/alerts`;
+                await authFetch(url, { method: 'DELETE' });
+                showToast('Alert History Cleared', 'All alert records have been deleted.', 'success');
+                fetchAlertHistory();
+            } catch (e) {
+                showToast('Error', 'Failed to clear alert log.', 'error');
+            }
+        });
+    }
+
+    // Create Rule Modal & Form
+    const btnOpenRule = document.getElementById('btn-open-create-rule-modal');
+    const modalRule = document.getElementById('create-rule-modal');
+    const closeRule = document.getElementById('create-rule-modal-close');
+    const cancelRule = document.getElementById('btn-cancel-create-rule');
+    const actionTypeSel = document.getElementById('rule-action-type');
+    const targetGroup = document.getElementById('rule-target-group');
+    
+    if (btnOpenRule && modalRule) {
+        btnOpenRule.addEventListener('click', () => modalRule.style.display = 'flex');
+        if (closeRule) closeRule.addEventListener('click', () => modalRule.style.display = 'none');
+        if (cancelRule) cancelRule.addEventListener('click', () => modalRule.style.display = 'none');
+    }
+    
+    if (actionTypeSel && targetGroup) {
+        actionTypeSel.addEventListener('change', () => {
+            const val = actionTypeSel.value;
+            targetGroup.style.display = (val === 'restart_service' || val === 'kill_process') ? 'block' : 'none';
+        });
+    }
+    
+    const formRule = document.getElementById('form-create-rule');
+    if (formRule) {
+        formRule.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('rule-name').value;
+            const metric_name = document.getElementById('rule-metric').value;
+            const operator = document.getElementById('rule-operator').value;
+            const threshold_value = parseFloat(document.getElementById('rule-threshold').value);
+            const severity = document.getElementById('rule-severity').value;
+            const action_type = document.getElementById('rule-action-type').value;
+            const action_target = document.getElementById('rule-action-target').value;
+            
+            try {
+                const res = await authFetch('/api/v1/automation/rules', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        device_id: state.selectedDeviceId || null,
+                        name, metric_name, operator, threshold_value, severity, action_type, action_target
+                    })
+                });
+                if (res.ok) {
+                    showToast('Rule Created', `Automation rule '${name}' saved successfully.`, 'success');
+                    modalRule.style.display = 'none';
+                    formRule.reset();
+                    fetchAutomationRules();
+                }
+            } catch (err) {
+                showToast('Error', 'Failed to create automation rule.', 'error');
+            }
+        });
+    }
+    
+    // Incident Filter
+    const incFilter = document.getElementById('incident-filter-status');
+    if (incFilter) incFilter.addEventListener('change', fetchIncidentHistory);
 }
 
 // Background checker for updates sync finish
@@ -668,6 +757,10 @@ function switchView(view) {
         events: ["Windows Event Viewer logs", "Scanning System and Application diagnostic events from Microsoft Event Logs."],
         devices: ["Registered Devices", "All Windows agent machines reporting to this server."],
         admin: ["Admin Portal & User Management", "Enterprise organization summary and user permission controls."],
+        analytics: ["Observability & Trend Analytics", "Historical telemetry metrics, downsampled growth trends, and anomaly log correlation."],
+        alerts: ["Alert History & Threshold Events", "Historical audit log of system threshold warnings and critical telemetry alerts."],
+        automation: ["Intelligent Automation Rules", "Rule-based threshold alerts, automated IT workflows, and remote service remediation."],
+        incidents: ["Incident History & Audit Log", "Full lifecycle tracking of open, auto-remediated, and resolved system incidents."],
         settings: ["System Settings", "Configure indicators, warning thresholds, data rates, and autostart."]
     };
     
@@ -699,6 +792,14 @@ function refreshViewContent() {
             fetchAdminOverview();
             fetchAdminUsers();
         }
+    } else if (state.activeView === 'analytics') {
+        fetchAnalyticsAndTrends();
+    } else if (state.activeView === 'alerts') {
+        fetchAlertHistory();
+    } else if (state.activeView === 'automation') {
+        fetchAutomationRules();
+    } else if (state.activeView === 'incidents') {
+        fetchIncidentHistory();
     }
 }
 
@@ -2136,4 +2237,369 @@ function openAssignDeviceModal(deviceId, deviceName) {
         modal.style.display = 'flex';
     }
 }
+
+
+// ── Part 4: Observability & Trend Analytics ──
+
+state.analyticsPeriod = '1h';
+
+async function fetchAnalyticsAndTrends() {
+    const devId = state.selectedDeviceId || (state.devices[0] ? state.devices[0].id : null);
+    if (!devId && state.mode === 'centralized') return;
+    
+    try {
+        const url = state.mode === 'centralized'
+            ? `/api/v1/devices/${devId}/metrics/trends?period=${state.analyticsPeriod}`
+            : `/api/static-info`; // fallback
+            
+        const res = await authFetch(url);
+        if (!res.ok) return;
+        const trends = await res.json();
+        
+        // Render Trend Summary Cards
+        const cpuBadge = document.getElementById('trend-cpu-badge');
+        if (cpuBadge) {
+            const slope = trends.cpu_trend_slope || 0;
+            cpuBadge.textContent = `${slope >= 0 ? '+' : ''}${slope}%`;
+            cpuBadge.className = `trend-badge ${slope > 5 ? 'negative' : slope < -5 ? '' : 'neutral'}`;
+        }
+        
+        document.getElementById('trend-cpu-avg').textContent = (trends.cpu_avg || 0) + '%';
+        document.getElementById('trend-cpu-min').textContent = (trends.cpu_min || 0) + '%';
+        document.getElementById('trend-cpu-max').textContent = (trends.cpu_max || 0) + '%';
+        
+        document.getElementById('trend-ram-avg').textContent = (trends.ram_avg || 0) + '%';
+        document.getElementById('trend-ram-min').textContent = (trends.ram_min || 0) + '%';
+        document.getElementById('trend-ram-max').textContent = (trends.ram_max || 0) + '%';
+        
+        document.getElementById('trend-disk-max').textContent = formatBytesRate(trends.disk_write_max || 0);
+        document.getElementById('trend-disk-read-max').textContent = formatBytesRate(trends.disk_read_max || 0);
+        document.getElementById('trend-disk-write-max').textContent = formatBytesRate(trends.disk_write_max || 0);
+        
+        document.getElementById('trend-net-max').textContent = formatBytesRate(trends.net_download_max || 0);
+        document.getElementById('trend-net-down-max').textContent = formatBytesRate(trends.net_download_max || 0);
+        document.getElementById('trend-net-up-max').textContent = formatBytesRate(trends.net_upload_max || 0);
+        
+        // Fetch historical snapshots for Trend Charts
+        const minutes = state.analyticsPeriod === '15m' ? 15 : state.analyticsPeriod === '1h' ? 60 : state.analyticsPeriod === '6h' ? 360 : state.analyticsPeriod === '24h' ? 1440 : 10080;
+        const histUrl = state.mode === 'centralized'
+            ? `/api/v1/devices/${devId}/metrics?minutes=${minutes}`
+            : `/api/static-info`;
+            
+        const histRes = await authFetch(histUrl);
+        if (histRes.ok) {
+            const histData = await histRes.json();
+            const snapshots = (histData.snapshots || []).slice().reverse();
+            renderAnalyticsCharts(snapshots);
+        }
+    } catch (e) {
+        console.error("Error fetching analytics & trends:", e);
+    }
+}
+
+function renderAnalyticsCharts(snapshots) {
+    const cpuCanvas = document.getElementById('chart-analytics-cpu');
+    const ramCanvas = document.getElementById('chart-analytics-ram');
+    if (!cpuCanvas || !ramCanvas) return;
+    
+    const labels = snapshots.map(s => new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    const cpuData = snapshots.map(s => s.metrics ? s.metrics.cpu_usage : 0);
+    const ramData = snapshots.map(s => s.metrics ? s.metrics.ram_usage_percent : 0);
+    
+    if (charts.analyticsCpu) charts.analyticsCpu.destroy();
+    if (charts.analyticsRam) charts.analyticsRam.destroy();
+    
+    const chartConfig = (ctx, label, data, color) => new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: label,
+                data: data,
+                borderColor: color,
+                backgroundColor: color.replace('1)', '0.1)'),
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            onClick: (e, elements) => {
+                if (elements.length > 0) {
+                    const idx = elements[0].index;
+                    const targetSnap = snapshots[idx];
+                    if (targetSnap) {
+                        fetchLogCorrelation(targetSnap.timestamp);
+                    }
+                }
+            },
+            scales: {
+                y: { min: 0, max: 100 }
+            }
+        }
+    });
+    
+    charts.analyticsCpu = chartConfig(cpuCanvas, 'CPU %', cpuData, 'rgba(0, 180, 216, 1)');
+    charts.analyticsRam = chartConfig(ramCanvas, 'RAM %', ramData, 'rgba(157, 78, 221, 1)');
+}
+
+async function fetchLogCorrelation(timestampStr) {
+    const devId = state.selectedDeviceId || (state.devices[0] ? state.devices[0].id : 1);
+    const label = document.getElementById('correlation-timestamp-label');
+    const body = document.getElementById('correlation-body');
+    if (!label || !body) return;
+    
+    label.textContent = `Inspecting events correlated with ${new Date(timestampStr).toLocaleString()}`;
+    body.innerHTML = '<div class="loading-cell"><div class="spinner"></div><span>Correlating events...</span></div>';
+    
+    try {
+        const url = `/api/v1/devices/${devId}/metrics/correlate?timestamp=${encodeURIComponent(timestampStr)}&window_minutes=5`;
+        const res = await authFetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        const m = data.metrics_at_timestamp || {};
+        const events = data.events || [];
+        const procs = data.processes || [];
+        
+        body.innerHTML = `
+            <div class="correlation-metrics-summary glass-panel" style="margin-bottom: 12px; padding: 10px 14px;">
+                <strong>Snapshot Load:</strong> CPU ${Math.round(m.cpu_usage || 0)}% | RAM ${Math.round(m.ram_usage_percent || 0)}% | Temp ${m.cpu_temp || '--'}°C
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                    <h4 style="margin-bottom: 8px; font-size: 0.8rem;" class="text-secondary">Correlated Event Logs (${events.length})</h4>
+                    <ul style="list-style: none; padding: 0; font-size: 0.75rem; max-height: 200px; overflow-y: auto;">
+                        ${events.length === 0 ? '<li class="text-muted">No diagnostic event entries in window</li>' : events.slice(0, 8).map(e => `
+                            <li style="padding: 6px 0; border-bottom: 1px solid var(--card-border);">
+                                <span class="severity-badge ${e.severity === 'Error' || e.severity === 'Critical' ? 'critical' : 'warning'}">${escapeHtml(e.severity)}</span>
+                                <strong>${escapeHtml(e.source)}</strong>: ${escapeHtml(e.message).substring(0, 80)}...
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+                <div>
+                    <h4 style="margin-bottom: 8px; font-size: 0.8rem;" class="text-secondary">Active Top Processes (${procs.length})</h4>
+                    <ul style="list-style: none; padding: 0; font-size: 0.75rem; max-height: 200px; overflow-y: auto;">
+                        ${procs.length === 0 ? '<li class="text-muted">No process snapshot data available</li>' : procs.slice(0, 8).map(p => `
+                            <li style="padding: 6px 0; border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between;">
+                                <span>${escapeHtml(p.name)}</span>
+                                <strong style="color: var(--accent-blue);">${p.cpu_usage ? p.cpu_usage.toFixed(1) : 0}% CPU</strong>
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        body.innerHTML = '<div class="no-correlation-msg text-danger">Failed to fetch correlated event logs.</div>';
+    }
+}
+
+// ── Alert History ──
+
+async function fetchAlertHistory() {
+    const tbody = document.getElementById('alerts-table-body');
+    if (!tbody) return;
+    
+    try {
+        const severityFilter = document.getElementById('alert-filter-severity').value;
+        const devId = state.selectedDeviceId;
+        let url = `/api/v1/alerts?limit=100`;
+        if (devId) url += `&device_id=${devId}`;
+        if (severityFilter !== 'all') url += `&severity=${severityFilter}`;
+        
+        const res = await authFetch(url);
+        if (!res.ok) return;
+        const alerts = await res.json();
+        
+        if (alerts.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="no-data-cell">No historic threshold alerts logged.</td></tr>`;
+            return;
+        }
+        
+        tbody.innerHTML = alerts.map(a => `
+            <tr>
+                <td><span class="text-secondary font-mini">${new Date(a.timestamp).toLocaleString()}</span></td>
+                <td><span class="severity-badge ${a.severity.toLowerCase()}">${escapeHtml(a.severity)}</span></td>
+                <td><strong style="text-transform: uppercase;">${escapeHtml(a.alert_type)}</strong></td>
+                <td>${escapeHtml(a.message)}</td>
+                <td>
+                    <button class="btn btn-secondary btn-sm" onclick="fetchLogCorrelation('${a.timestamp}'); switchView('analytics');">Inspect</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteAlertRecord(${a.id})">Delete</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" class="error-cell">Error loading alert history.</td></tr>`;
+    }
+}
+
+async function deleteAlertRecord(alertId) {
+    try {
+        const res = await authFetch(`/api/v1/alerts/${alertId}`, { method: 'DELETE' });
+        if (res.ok) {
+            showToast('Alert Deleted', 'Alert entry removed.', 'success');
+            fetchAlertHistory();
+        }
+    } catch (e) {
+        showToast('Error', 'Failed to delete alert record.', 'error');
+    }
+}
+
+
+// ── Part 5 Automation & Incident Handlers ──
+
+async function fetchAutomationRules() {
+    const grid = document.getElementById('automation-rules-grid');
+    if (!grid) return;
+    try {
+        const devId = state.selectedDeviceId;
+        const url = devId ? `/api/v1/automation/rules?device_id=${devId}` : `/api/v1/automation/rules`;
+        const res = await authFetch(url);
+        if (!res.ok) throw new Error('Failed to load rules');
+        const rules = await res.json();
+        
+        if (rules.length === 0) {
+            grid.innerHTML = `
+                <div class="glass-panel" style="grid-column: span 2; padding: 24px; text-align: center; color: var(--text-secondary);">
+                    No automation rules defined yet. Click <strong>+ New Rule</strong> above to add intelligent alert rules.
+                </div>`;
+            return;
+        }
+        
+        grid.innerHTML = rules.map(rule => `
+            <div class="glass-panel" style="padding: 20px; border-radius: 14px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--card-border);">
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <h4 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0;">${escapeHtml(rule.name)}</h4>
+                        <span class="severity-badge ${rule.severity}">${rule.severity.toUpperCase()}</span>
+                    </div>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 14px;">
+                        Trigger condition: <strong>${escapeHtml(rule.metric_name)}</strong> ${rule.operator} <strong>${rule.threshold_value}</strong>
+                    </p>
+                    <div style="font-size: 0.85rem; color: var(--text-muted); background: var(--input-bg); padding: 8px 12px; border-radius: 8px;">
+                        ⚡ Automated Remediation: <strong style="color: var(--accent-blue);">${escapeHtml(rule.action_type)}</strong> ${rule.action_target ? `(${escapeHtml(rule.action_target)})` : ''}
+                    </div>
+                </div>
+                <div style="margin-top: 16px; display: flex; justify-content: flex-end;">
+                    <button class="btn btn-danger btn-sm" onclick="deleteAutomationRule(${rule.id})">Delete Rule</button>
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        grid.innerHTML = `
+            <div class="glass-panel" style="grid-column: 1 / -1; padding: 28px; text-align: center; color: var(--text-secondary); border-radius: 14px;">
+                No active automation rules found. Click <strong>+ New Rule</strong> above to create custom remediation workflows.
+            </div>`;
+    }
+}
+
+async function deleteAutomationRule(ruleId) {
+    if (!confirm('Delete this automation rule?')) return;
+    try {
+        const res = await authFetch(`/api/v1/automation/rules/${ruleId}`, { method: 'DELETE' });
+        if (res.ok) {
+            showToast('Rule Deleted', 'Automation rule removed.', 'success');
+            fetchAutomationRules();
+        }
+    } catch (e) {
+        showToast('Error', 'Failed to delete rule.', 'error');
+    }
+}
+
+async function fetchIncidentHistory() {
+    const tbody = document.getElementById('incidents-table-body');
+    if (!tbody) return;
+    try {
+        const devId = state.selectedDeviceId;
+        const statusFilter = document.getElementById('incident-filter-status')?.value || 'all';
+        let url = `/api/v1/automation/incidents?limit=50`;
+        if (devId) url += `&device_id=${devId}`;
+        if (statusFilter !== 'all') url += `&status=${statusFilter}`;
+        
+        const res = await authFetch(url);
+        if (!res.ok) throw new Error('Failed to load incidents');
+        const incidents = await res.json();
+        
+        if (incidents.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding: 24px;">No incident audit records found.</td></tr>`;
+            return;
+        }
+        
+        tbody.innerHTML = incidents.map(inc => `
+            <tr>
+                <td>${new Date(inc.triggered_at).toLocaleString()}</td>
+                <td style="font-weight: 600; color: var(--text-primary);">${inc.title}</td>
+                <td><span class="severity-badge ${inc.severity}">${inc.severity.toUpperCase()}</span></td>
+                <td>
+                    <span class="status-badge ${inc.status === 'auto_remediated' ? 'online' : (inc.status === 'resolved' ? 'online' : 'offline')}">
+                        ${inc.status.replace('_', ' ').toUpperCase()}
+                    </span>
+                </td>
+                <td style="font-family: monospace; font-size: 0.8rem; color: var(--text-secondary);">${inc.log_output || 'No output log'}</td>
+                <td>
+                    ${inc.status === 'open' ? `<button class="btn btn-secondary btn-sm" onclick="resolveIncident(${inc.id})">Mark Resolved</button>` : `<span class="text-muted font-mini">Resolved</span>`}
+                </td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="error-cell">Error loading incident history.</td></tr>`;
+    }
+}
+
+async function resolveIncident(incidentId) {
+    try {
+        const res = await authFetch(`/api/v1/automation/incidents/${incidentId}/resolve`, { method: 'POST' });
+        if (res.ok) {
+            showToast('Incident Resolved', 'Incident status updated to resolved.', 'success');
+            fetchIncidentHistory();
+        }
+    } catch (e) {
+        showToast('Error', 'Failed to resolve incident.', 'error');
+    }
+}
+
+async function triggerQuickAction(actionType, target = null) {
+    const devId = state.selectedDeviceId || 1;
+    try {
+        const res = await authFetch('/api/v1/automation/trigger-action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: devId, action_type: actionType, target: target })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            showToast('Action Dispatched', `Remediation command '${actionType}' sent to device.`, 'success');
+            if (state.activeView === 'incidents') fetchIncidentHistory();
+        }
+    } catch (e) {
+        showToast('Error', 'Failed to dispatch remediation command.', 'error');
+    }
+}
+
+function promptQuickAction(actionType) {
+    const promptMsg = actionType === 'restart_service' ? 'Enter Windows Service name to restart (e.g. wuauserv):' : 'Enter Process name to terminate (e.g. notepad.exe):';
+    const target = prompt(promptMsg);
+    if (target && target.trim()) {
+        triggerQuickAction(actionType, target.trim());
+    }
+}
+
+function triggerDesktopNotification(title, body) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, { body: body, icon: '/static/favicon.ico' });
+    } else if ('Notification' in window && Notification.permission !== 'denied') {
+        Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+                new Notification(title, { body: body, icon: '/static/favicon.ico' });
+            }
+        });
+    }
+}
+
+
 

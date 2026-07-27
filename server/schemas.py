@@ -216,3 +216,114 @@ class WSSubscribe(BaseModel):
     action: str = "subscribe"       # subscribe / unsubscribe / set_interval
     device_id: Optional[int] = None
     value: Optional[float] = None   # for set_interval
+
+
+# ── Alert Schemas ──
+
+class AlertCreateRequest(BaseModel):
+    device_id: int
+    alert_type: str                  # cpu, ram, disk, temp, network
+    severity: str                    # warning, critical
+    message: str
+
+
+class AlertOut(BaseModel):
+    id: int
+    device_id: int
+    alert_type: str
+    severity: str
+    message: str
+    timestamp: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Analytics & Correlation Schemas ──
+
+class TrendSummaryResponse(BaseModel):
+    device_id: int
+    period: str                      # 1h, 6h, 24h, 7d
+    snapshot_count: int
+    cpu_avg: float
+    cpu_min: float
+    cpu_max: float
+    cpu_trend_slope: float           # percentage change over period
+    ram_avg: float
+    ram_min: float
+    ram_max: float
+    disk_read_max: float
+    disk_write_max: float
+    net_download_max: float
+    net_upload_max: float
+
+
+class LogCorrelationResponse(BaseModel):
+    device_id: int
+    target_timestamp: str
+    window_minutes: int
+    metrics_at_timestamp: Optional[dict[str, Any]] = None
+    events: list[dict[str, Any]] = []
+    processes: list[dict[str, Any]] = []
+    alerts: list[AlertOut] = []
+
+
+# ── Automation & Intelligent Alerting Schemas ──
+
+class AlertRuleCreateRequest(BaseModel):
+    device_id: Optional[int] = None
+    name: str
+    metric_name: str                 # cpu_usage, ram_usage_percent, disk_free_percent, cpu_temp
+    operator: str                    # '>', '<', '=='
+    threshold_value: float
+    duration_seconds: int = 0
+    severity: str = "warning"        # info, warning, critical
+    action_type: str = "notification"# notification, restart_service, kill_process, cleanup_temp
+    action_target: Optional[str] = None
+    enabled: bool = True
+
+
+class AlertRuleOut(AlertRuleCreateRequest):
+    id: int
+    created_at: Optional[datetime.datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class IncidentOut(BaseModel):
+    id: int
+    device_id: int
+    rule_id: Optional[int] = None
+    title: str
+    severity: str
+    status: str
+    action_taken: Optional[str] = None
+    log_output: Optional[str] = None
+    triggered_at: datetime.datetime
+    resolved_at: Optional[datetime.datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ActionDispatchPayload(BaseModel):
+    device_id: int
+    action_type: str                 # restart_service, kill_process, cleanup_temp
+    target: Optional[str] = None     # service name or process name
+
+
+class MaintenanceTaskOut(BaseModel):
+    id: int
+    device_id: Optional[int] = None
+    title: str
+    task_type: str
+    frequency: str
+    last_run: Optional[datetime.datetime] = None
+    next_run: Optional[datetime.datetime] = None
+    enabled: bool
+
+    class Config:
+        from_attributes = True
+
+

@@ -35,6 +35,43 @@ def parse_args():
     return parser.parse_args()
 
 
+def execute_remediation_command(cmd: dict):
+    """Execute automated IT remediation action on local Windows host."""
+    action = cmd.get("action")
+    target = cmd.get("target")
+    print(f"[Agent Action] Executing remediation: {action} (target={target})")
+
+    try:
+        if action == "restart_service" and target:
+            subprocess.run(["net", "stop", target], capture_output=True, text=True, timeout=15)
+            res = subprocess.run(["net", "start", target], capture_output=True, text=True, timeout=15)
+            print(f"[Agent Action] Service '{target}' restart output: {res.stdout.strip()}")
+        elif action == "kill_process" and target:
+            import psutil
+            killed = 0
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    if proc.info['name'] and target.lower() in proc.info['name'].lower():
+                        proc.kill()
+                        killed += 1
+                except Exception:
+                    pass
+            print(f"[Agent Action] Terminated {killed} instances of process '{target}'")
+        elif action == "cleanup_temp":
+            temp_dir = os.environ.get("TEMP", r"C:\Windows\Temp")
+            cleared = 0
+            for root, dirs, files in os.walk(temp_dir):
+                for f in files:
+                    try:
+                        os.remove(os.path.join(root, f))
+                        cleared += 1
+                    except Exception:
+                        pass
+            print(f"[Agent Action] Cleaned up {cleared} temp files in {temp_dir}")
+    except Exception as e:
+        print(f"[Agent Action] Failed to execute {action}: {e}")
+
+
 async def run_agent():
     args = parse_args()
 
@@ -59,12 +96,10 @@ async def run_agent():
     print("[Agent] Initializing system monitor...")
     monitor = SystemMonitor()
 
-    # Give monitor a moment to populate initial metrics
     await asyncio.sleep(2.0)
 
     sender = AgentSender()
 
-    # ── Step 1: Register with server (with retries) ──
     registered = False
     backoff = 2.0
     while not registered:
@@ -80,38 +115,33 @@ async def run_agent():
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 60.0)
 
-    # ── Step 2: Upload static info ──
     try:
         await sender.send_static_info(monitor.static_info)
     except Exception as e:
         print(f"[Agent] Failed to upload static info: {e}")
 
-    # ── Step 3: Upload software list ──
     try:
         await sender.send_software_list(monitor.installed_software)
     except Exception as e:
         print(f"[Agent] Failed to upload software list: {e}")
 
-    # ── Step 4: Upload event logs (initial batch) ──
     try:
         events = monitor.get_event_logs(limit=200)
         await sender.send_event_logs(events)
     except Exception as e:
         print(f"[Agent] Failed to upload event logs: {e}")
 
-    # ── Step 5: Start metric streaming loop ──
     print("[Agent] Starting metric stream...")
 
-    heartbeat_interval = 10.0  # seconds
-    event_refresh_interval = 300.0  # 5 minutes
+    heartbeat_interval = 10.0
+    event_refresh_interval = 300.0
     last_heartbeat = time.time()
     last_event_refresh = time.time()
     reconnect_backoff = 1.0
     process_tick = 0
-    process_send_interval = 5  # send processes every 5th cycle
+    process_send_interval = 5
 
     while True:
-        # Ensure WebSocket is connected
         if not sender.is_ws_connected:
             connected = await sender.connect_ws()
             if not connected:
@@ -121,10 +151,13 @@ async def run_agent():
                 continue
             reconnect_backoff = 1.0
 
-        # Get live metrics from SystemMonitor
+        # Check for incoming remote automation commands from server
+        cmds = await sender.check_incoming_commands()
+        for cmd in cmds:
+            execute_remediation_command(cmd)
+
         metrics = monitor.get_live_metrics()
 
-        # Periodically include process list
         process_tick += 1
         if process_tick >= process_send_interval:
             process_tick = 0
@@ -133,12 +166,10 @@ async def run_agent():
             except Exception:
                 pass
 
-        # Send metrics over WebSocket
         sent = await sender.send_metrics(metrics)
         if not sent:
-            continue  # Will reconnect on next iteration
+            continue
 
-        # Periodic heartbeat via REST
         now = time.time()
         if now - last_heartbeat >= heartbeat_interval:
             last_heartbeat = now
@@ -147,7 +178,6 @@ async def run_agent():
             except Exception as e:
                 print(f"[Agent] Heartbeat failed: {e}")
 
-        # Periodic event log refresh
         if now - last_event_refresh >= event_refresh_interval:
             last_event_refresh = now
             try:
