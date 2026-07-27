@@ -113,10 +113,20 @@ class ConnectionManager:
         for ws in dead:
             self.disconnect_dashboard(ws)
 
-    # ── Utility ──
-
     def get_online_device_ids(self) -> list[int]:
         return list(self.agent_connections.keys())
+
+    async def send_agent_command(self, device_id: int, payload: dict) -> bool:
+        """Send an action command to a connected agent over WebSocket."""
+        ws = self.agent_connections.get(device_id)
+        if not ws:
+            return False
+        try:
+            await ws.send_json(payload)
+            return True
+        except Exception as e:
+            print(f"[WS Hub] Failed to send command to agent {device_id}: {e}")
+            return False
 
 
 # Global singleton

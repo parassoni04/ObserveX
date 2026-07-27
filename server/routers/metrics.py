@@ -124,7 +124,7 @@ async def get_metric_summary(
 @router.get("/trends")
 async def get_metric_trends(
     device_id: int,
-    period: str = Query(default="24h", pattern="^(1h|6h|24h|7d)$"),
+    period: str = Query(default="24h", pattern="^(15m|1h|6h|24h|7d)$"),
     db: AsyncSession = Depends(get_db),
 ):
     """Get statistical trend analysis (min, max, avg, slope) for a device."""
@@ -132,7 +132,7 @@ async def get_metric_trends(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    period_minutes = {"1h": 60, "6h": 360, "24h": 1440, "7d": 10080}[period]
+    period_minutes = {"15m": 15, "1h": 60, "6h": 360, "24h": 1440, "7d": 10080}[period]
     since = datetime.datetime.utcnow() - datetime.timedelta(minutes=period_minutes)
 
     result = await db.execute(

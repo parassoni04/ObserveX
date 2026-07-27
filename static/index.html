@@ -115,6 +115,22 @@
                     </svg>
                     <span>Alert History</span>
                 </a>
+                <a href="#" class="nav-link" data-view="automation">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    <span>Automation Rules</span>
+                </a>
+                <a href="#" class="nav-link" data-view="incidents">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <span>Incident History</span>
+                </a>
                 <a href="#" class="nav-link" data-view="devices">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -955,6 +971,111 @@
                 </div>
             </section>
 
+            <!-- Automation & Workflows View -->
+            <section id="view-automation" class="content-view">
+                <!-- Section Action Bar -->
+                <div class="automation-action-bar glass-panel" style="display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; margin-bottom: 28px; border-radius: 14px;">
+                    <div>
+                        <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; color: var(--text-primary);">Active Rule Engine</h3>
+                        <p class="text-secondary" style="font-size: 0.85rem; margin: 0;">Automated threshold evaluation and IT process remediation</p>
+                    </div>
+                    <button class="btn btn-primary" id="btn-open-create-rule-modal" style="padding: 10px 20px; font-weight: 600;">
+                        + New Rule
+                    </button>
+                </div>
+
+                <!-- Rules Grid Section -->
+                <div style="margin-bottom: 36px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                        <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Configured Automation Rules</h4>
+                    </div>
+                    <div class="automation-rules-grid" id="automation-rules-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px;">
+                        <div class="loading-cell">
+                            <div class="spinner"></div>
+                            <span>Loading automation rules...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Remediation Catalog Section -->
+                <div class="catalog-panel glass-panel" style="padding: 24px; border-radius: 14px;">
+                    <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 18px;">
+                        Quick IT Remediation Actions
+                    </h4>
+                    <div class="quick-remediation-cards" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                        <div class="remediation-card glass-panel" onclick="triggerQuickAction('cleanup_temp')" style="padding: 20px; border-radius: 12px; cursor: pointer; transition: var(--transition-smooth); border: 1px solid var(--card-border);">
+                            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 10px;">
+                                <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(0, 136, 255, 0.15); color: var(--accent-blue); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">⚡</div>
+                                <div>
+                                    <h5 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0;">Temp File Cleanup</h5>
+                                    <span style="font-size: 0.75rem; color: var(--text-muted);">Purge %TEMP% & log caches</span>
+                                </div>
+                            </div>
+                            <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0;">Instantly frees up disk space by clearing temporary system files on the agent machine.</p>
+                        </div>
+
+                        <div class="remediation-card glass-panel" onclick="promptQuickAction('restart_service')" style="padding: 20px; border-radius: 12px; cursor: pointer; transition: var(--transition-smooth); border: 1px solid var(--card-border);">
+                            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 10px;">
+                                <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(0, 230, 118, 0.15); color: var(--accent-green); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">🔄</div>
+                                <div>
+                                    <h5 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0;">Restart Windows Service</h5>
+                                    <span style="font-size: 0.75rem; color: var(--text-muted);">Execute net stop / net start</span>
+                                </div>
+                            </div>
+                            <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0;">Restarts any frozen or unresponsive Windows background service by name.</p>
+                        </div>
+
+                        <div class="remediation-card glass-panel" onclick="promptQuickAction('kill_process')" style="padding: 20px; border-radius: 12px; cursor: pointer; transition: var(--transition-smooth); border: 1px solid var(--card-border);">
+                            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 10px;">
+                                <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255, 61, 0, 0.15); color: var(--accent-red); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">🛑</div>
+                                <div>
+                                    <h5 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0;">Terminate Process</h5>
+                                    <span style="font-size: 0.75rem; color: var(--text-muted);">Kill rogue processes</span>
+                                </div>
+                            </div>
+                            <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0;">Forcefully terminates high-CPU or leaking processes across host memory.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Incident History View -->
+            <section id="view-incidents" class="content-view">
+                <div class="table-toolbar glass-panel">
+                    <div class="filter-group">
+                        <select id="incident-filter-status" class="custom-select">
+                            <option value="all">All Incident Statuses</option>
+                            <option value="open">Open Incidents</option>
+                            <option value="auto_remediated">Auto-Remediated</option>
+                            <option value="resolved">Manually Resolved</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="table-container glass-panel">
+                    <table class="data-table" id="incidents-table">
+                        <thead>
+                            <tr>
+                                <th>Triggered At</th>
+                                <th>Incident Title</th>
+                                <th>Severity</th>
+                                <th>Status</th>
+                                <th>Action Log</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="incidents-table-body">
+                            <tr>
+                                <td colspan="6" class="loading-cell">
+                                    <div class="spinner"></div>
+                                    <span>Loading incident audit history...</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
             <!-- Devices View -->
             <section id="view-devices" class="content-view">
                 <div class="devices-grid" id="devices-grid">
@@ -1291,6 +1412,71 @@
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" id="btn-cancel-assign-device">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Assignment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         Create Automation Rule Modal
+         ══════════════════════════════════════════════════════════ -->
+    <div class="modal-backdrop" id="create-rule-modal" style="display: none;">
+        <div class="modal-card glass-panel">
+            <div class="modal-header">
+                <h3>Create Automation Rule</h3>
+                <span class="modal-close" id="create-rule-modal-close">&times;</span>
+            </div>
+            <form id="form-create-rule">
+                <div class="form-group">
+                    <label for="rule-name">Rule Name</label>
+                    <input type="text" id="rule-name" class="custom-input" placeholder="e.g. High CPU Auto-Cleanup" required>
+                </div>
+                <div class="form-group">
+                    <label for="rule-metric">Metric Condition</label>
+                    <select id="rule-metric" class="custom-select">
+                        <option value="cpu_usage">CPU Usage (%)</option>
+                        <option value="ram_usage_percent">RAM Usage (%)</option>
+                        <option value="cpu_temp">CPU Temperature (°C)</option>
+                    </select>
+                </div>
+                <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label for="rule-operator">Operator</label>
+                        <select id="rule-operator" class="custom-select">
+                            <option value=">">Greater than (&gt;)</option>
+                            <option value="<">Less than (&lt;)</option>
+                            <option value="==">Equals (==)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="rule-threshold">Threshold Value</label>
+                        <input type="number" id="rule-threshold" class="custom-input" placeholder="85" required step="0.1">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="rule-severity">Severity Level</label>
+                    <select id="rule-severity" class="custom-select">
+                        <option value="warning">Warning</option>
+                        <option value="critical">Critical</option>
+                        <option value="info">Info</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="rule-action-type">Automated Action</label>
+                    <select id="rule-action-type" class="custom-select">
+                        <option value="notification">Desktop Notification Only</option>
+                        <option value="cleanup_temp">Run Temp File & Cache Cleanup</option>
+                        <option value="restart_service">Restart Windows Service</option>
+                        <option value="kill_process">Terminate Process</option>
+                    </select>
+                </div>
+                <div class="form-group" id="rule-target-group" style="display: none;">
+                    <label for="rule-action-target">Action Target (Service or Process Name)</label>
+                    <input type="text" id="rule-action-target" class="custom-input" placeholder="e.g. wuauserv or chrome.exe">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-create-rule">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Automation Rule</button>
                 </div>
             </form>
         </div>

@@ -13,9 +13,9 @@ from fastapi.staticfiles import StaticFiles
 
 from server.config import settings
 from server.database import init_db, close_db
-from server.routers import devices, metrics, agents, auth, admin
+from server.routers import devices, metrics, agents, auth, admin, alerts, reports, automation
 from server.websockets.hub import connection_manager
-from server.tasks import cleanup_old_metrics, mark_stale_devices_offline
+from server.tasks import cleanup_old_metrics, mark_stale_devices_offline, evaluate_alert_rules
 
 
 async def seed_initial_data():
@@ -66,12 +66,14 @@ async def lifespan(app: FastAPI):
     # Launch background tasks
     cleanup_task = asyncio.create_task(cleanup_old_metrics())
     stale_task = asyncio.create_task(mark_stale_devices_offline())
+    rule_task = asyncio.create_task(evaluate_alert_rules())
 
     yield
 
     # ── Shutdown ──
     cleanup_task.cancel()
     stale_task.cancel()
+    rule_task.cancel()
     await close_db()
     print("[ObserveX Server] Shutdown complete.")
 
@@ -99,6 +101,9 @@ app.include_router(admin.router)
 app.include_router(devices.router)
 app.include_router(metrics.router)
 app.include_router(agents.router)
+app.include_router(alerts.router)
+app.include_router(reports.router)
+app.include_router(automation.router)
 
 
 # ── WebSocket: Agent → Server ──

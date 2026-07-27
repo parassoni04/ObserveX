@@ -152,3 +152,54 @@ class DeviceSoftware(Base):
     __table_args__ = (
         Index("ix_device_software_device", "device_id"),
     )
+
+
+class AlertRule(Base):
+    """User-defined intelligent alert rules with optional automated action triggers."""
+    __tablename__ = "alert_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=True)
+    name = Column(String(255), nullable=False)
+    metric_name = Column(String(50), nullable=False)
+    operator = Column(String(10), nullable=False)
+    threshold_value = Column(Float, nullable=False)
+    duration_seconds = Column(Integer, default=0)
+    severity = Column(String(20), default="warning")
+    action_type = Column(String(50), default="notification")
+    action_target = Column(String(255), nullable=True)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class Incident(Base):
+    """Incident history & automated remediation audit log."""
+    __tablename__ = "incidents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    rule_id = Column(Integer, ForeignKey("alert_rules.id", ondelete="SET NULL"), nullable=True)
+    title = Column(String(255), nullable=False)
+    severity = Column(String(20), nullable=False)
+    status = Column(String(30), default="open")
+    action_taken = Column(String(100), nullable=True)
+    log_output = Column(Text, nullable=True)
+    triggered_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    resolved_at = Column(DateTime, nullable=True)
+
+    device = relationship("Device")
+
+
+class MaintenanceTask(Base):
+    """Scheduled maintenance reminders and auto-cleanup tasks."""
+    __tablename__ = "maintenance_tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=True)
+    title = Column(String(255), nullable=False)
+    task_type = Column(String(50), nullable=False)
+    frequency = Column(String(50), default="weekly")
+    last_run = Column(DateTime, nullable=True)
+    next_run = Column(DateTime, nullable=True)
+    enabled = Column(Boolean, default=True)
+

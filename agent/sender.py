@@ -124,6 +124,21 @@ class AgentSender:
                 pass
             self._ws = None
 
+    async def check_incoming_commands(self) -> list[dict]:
+        """Check if server sent any commands over WebSocket."""
+        if not self.is_ws_connected or not self._ws:
+            return []
+        commands = []
+        try:
+            while True:
+                msg = await asyncio.wait_for(self._ws.recv(), timeout=0.05)
+                data = json.loads(msg)
+                if isinstance(data, dict) and data.get("type") == "command":
+                    commands.append(data)
+        except (asyncio.TimeoutError, Exception):
+            pass
+        return commands
+
     @property
     def is_ws_connected(self) -> bool:
         if self._ws is None:
