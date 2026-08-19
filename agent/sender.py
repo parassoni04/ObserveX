@@ -15,85 +15,47 @@ class AgentSender:
         self.device_id: Optional[int] = None
         self._ws: Optional[Any] = None
 
-    # ── REST Methods ──
+    async def _post(self, path: str, payload: dict, params: dict | None = None, timeout: float = 10.0):
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(f"{self.server_url}{path}", json=payload, params=params)
+            resp.raise_for_status()
+            return resp.json()
 
     async def register(self, hostname: str, os_name: str, os_version: str) -> int:
-        """Register this device with the server. Returns the assigned device_id."""
-        url = f"{self.server_url}/api/v1/agent/register"
-        payload = {
-            "hostname": hostname,
-            "os_name": os_name,
-            "os_version": os_version,
-            "api_key": self.api_key,
-        }
-
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            self.device_id = data["device_id"]
-            print(f"[Agent] Registered as device_id={self.device_id} ({data['status']})")
-            return self.device_id
+        data = await self._post("/api/v1/agent/register", {"hostname": hostname, "os_name": os_name, "os_version": os_version, "api_key": self.api_key})
+        self.device_id = data["device_id"]
+        print(f"[Agent] Registered as device_id={self.device_id} ({data['status']})")
+        return self.device_id
 
     async def send_heartbeat(self):
-        """Send a heartbeat to keep the device marked as online."""
         if self.device_id is None:
             return
-        url = f"{self.server_url}/api/v1/agent/heartbeat"
-        payload = {"device_id": self.device_id, "api_key": self.api_key}
-
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
+        await self._post("/api/v1/agent/heartbeat", {"device_id": self.device_id, "api_key": self.api_key}, timeout=5.0)
 
     async def send_static_info(self, info: dict):
-        """Upload static hardware info."""
         if self.device_id is None:
             return
-        url = f"{self.server_url}/api/v1/agent/static-info"
-        params = {"device_id": self.device_id, "api_key": self.api_key}
-
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(url, json=info, params=params)
-            resp.raise_for_status()
-            print(f"[Agent] Static info uploaded for device_id={self.device_id}")
+        await self._post("/api/v1/agent/static-info", info, params={"device_id": self.device_id, "api_key": self.api_key}, timeout=15.0)
+        print(f"[Agent] Static info uploaded for device_id={self.device_id}")
 
     async def send_software_list(self, software: list[dict]):
-        """Upload installed software list."""
         if self.device_id is None:
             return
-        url = f"{self.server_url}/api/v1/agent/software"
-        params = {"device_id": self.device_id, "api_key": self.api_key}
-        payload = {"software": software}
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, json=payload, params=params)
-            resp.raise_for_status()
-            print(f"[Agent] Software list uploaded ({len(software)} items)")
+        await self._post("/api/v1/agent/software", {"software": software}, params={"device_id": self.device_id, "api_key": self.api_key}, timeout=30.0)
+        print(f"[Agent] Software list uploaded ({len(software)} items)")
 
     async def send_event_logs(self, events: list[dict]):
-        """Upload event logs."""
         if self.device_id is None:
             return
-        url = f"{self.server_url}/api/v1/agent/events"
-        params = {"device_id": self.device_id, "api_key": self.api_key}
-        payload = {"events": events}
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, json=payload, params=params)
-            resp.raise_for_status()
-            print(f"[Agent] Event logs uploaded ({len(events)} events)")
+        await self._post("/api/v1/agent/events", {"events": events}, params={"device_id": self.device_id, "api_key": self.api_key}, timeout=30.0)
+        print(f"[Agent] Event logs uploaded ({len(events)} events)")
 
     # ── WebSocket Methods ──
 
     async def connect_ws(self) -> bool:
-        """Establish a WebSocket connection to the server."""
         if self.device_id is None:
             return False
-
-        ws_base = agent_settings.ws_url
-        ws_url = f"{ws_base}/ws/v1/agent/{self.device_id}"
-
+        ws_url = f"{agent_settings.ws_url}/ws/v1/agent/{self.device_id}"
         try:
             self._ws = await websockets.connect(ws_url, ping_interval=20, ping_timeout=10)
             print(f"[Agent] WebSocket connected to {ws_url}")
@@ -104,7 +66,6 @@ class AgentSender:
             return False
 
     async def send_metrics(self, metrics: dict):
-        """Send a metric snapshot over the WebSocket."""
         if self._ws is None:
             return False
         try:
@@ -116,7 +77,6 @@ class AgentSender:
             return False
 
     async def close_ws(self):
-        """Close the WebSocket connection."""
         if self._ws:
             try:
                 await self._ws.close()
@@ -125,7 +85,6 @@ class AgentSender:
             self._ws = None
 
     async def check_incoming_commands(self) -> list[dict]:
-        """Check if server sent any commands over WebSocket."""
         if not self.is_ws_connected or not self._ws:
             return []
         commands = []

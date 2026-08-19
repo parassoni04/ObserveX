@@ -1,6 +1,10 @@
 import datetime
 from typing import Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
+
+
+class ORMBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ── Device Schemas ──
@@ -18,7 +22,7 @@ class DeviceRegisterResponse(BaseModel):
     status: str = "registered"
 
 
-class DeviceOut(BaseModel):
+class DeviceOut(ORMBase):
     id: int
     hostname: str
     os_name: Optional[str] = None
@@ -28,9 +32,6 @@ class DeviceOut(BaseModel):
     is_online: bool = False
     organization_id: Optional[int] = None
     assigned_user_id: Optional[int] = None
-
-    class Config:
-        from_attributes = True
 
 
 # ── Auth & User Schemas ──
@@ -47,13 +48,7 @@ class UserLoginRequest(BaseModel):
     password: str
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user: "UserOut"
-
-
-class UserOut(BaseModel):
+class UserOut(ORMBase):
     id: int
     email: str
     username: str
@@ -63,8 +58,11 @@ class UserOut(BaseModel):
     organization_id: Optional[int] = None
     created_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
 
 
 class UserCreateAdmin(BaseModel):
@@ -82,13 +80,10 @@ class UserUpdateAdmin(BaseModel):
     organization_id: Optional[int] = None
 
 
-class OrganizationOut(BaseModel):
+class OrganizationOut(ORMBase):
     id: int
     name: str
     created_at: Optional[datetime.datetime] = None
-
-    class Config:
-        from_attributes = True
 
 
 class DeviceAssignRequest(BaseModel):
@@ -115,7 +110,6 @@ class DeviceStatusOut(BaseModel):
 # ── Static Info Schemas ──
 
 class StaticInfoPayload(BaseModel):
-    """Payload sent by the agent when uploading static hardware info."""
     computer_name: Optional[str] = None
     os_name: Optional[str] = None
     os_release: Optional[str] = None
@@ -133,24 +127,18 @@ class StaticInfoPayload(BaseModel):
     network_adapters: Optional[list] = None
 
 
-class StaticInfoOut(StaticInfoPayload):
+class StaticInfoOut(StaticInfoPayload, ORMBase):
     device_id: int
     updated_at: Optional[datetime.datetime] = None
-
-    class Config:
-        from_attributes = True
 
 
 # ── Metric Schemas ──
 
-class MetricSnapshotOut(BaseModel):
+class MetricSnapshotOut(ORMBase):
     id: int
     device_id: int
     timestamp: datetime.datetime
     metrics: dict[str, Any]
-
-    class Config:
-        from_attributes = True
 
 
 class MetricHistoryResponse(BaseModel):
@@ -213,21 +201,21 @@ class EventLogPayload(BaseModel):
 # ── WebSocket Messages ──
 
 class WSSubscribe(BaseModel):
-    action: str = "subscribe"       # subscribe / unsubscribe / set_interval
+    action: str = "subscribe"
     device_id: Optional[int] = None
-    value: Optional[float] = None   # for set_interval
+    value: Optional[float] = None
 
 
 # ── Alert Schemas ──
 
 class AlertCreateRequest(BaseModel):
     device_id: int
-    alert_type: str                  # cpu, ram, disk, temp, network
-    severity: str                    # warning, critical
+    alert_type: str
+    severity: str
     message: str
 
 
-class AlertOut(BaseModel):
+class AlertOut(ORMBase):
     id: int
     device_id: int
     alert_type: str
@@ -235,20 +223,17 @@ class AlertOut(BaseModel):
     message: str
     timestamp: datetime.datetime
 
-    class Config:
-        from_attributes = True
-
 
 # ── Analytics & Correlation Schemas ──
 
 class TrendSummaryResponse(BaseModel):
     device_id: int
-    period: str                      # 1h, 6h, 24h, 7d
+    period: str
     snapshot_count: int
     cpu_avg: float
     cpu_min: float
     cpu_max: float
-    cpu_trend_slope: float           # percentage change over period
+    cpu_trend_slope: float
     ram_avg: float
     ram_min: float
     ram_max: float
@@ -273,25 +258,22 @@ class LogCorrelationResponse(BaseModel):
 class AlertRuleCreateRequest(BaseModel):
     device_id: Optional[int] = None
     name: str
-    metric_name: str                 # cpu_usage, ram_usage_percent, disk_free_percent, cpu_temp
-    operator: str                    # '>', '<', '=='
+    metric_name: str
+    operator: str
     threshold_value: float
     duration_seconds: int = 0
-    severity: str = "warning"        # info, warning, critical
-    action_type: str = "notification"# notification, restart_service, kill_process, cleanup_temp
+    severity: str = "warning"
+    action_type: str = "notification"
     action_target: Optional[str] = None
     enabled: bool = True
 
 
-class AlertRuleOut(AlertRuleCreateRequest):
+class AlertRuleOut(AlertRuleCreateRequest, ORMBase):
     id: int
     created_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
 
-
-class IncidentOut(BaseModel):
+class IncidentOut(ORMBase):
     id: int
     device_id: int
     rule_id: Optional[int] = None
@@ -303,17 +285,14 @@ class IncidentOut(BaseModel):
     triggered_at: datetime.datetime
     resolved_at: Optional[datetime.datetime] = None
 
-    class Config:
-        from_attributes = True
-
 
 class ActionDispatchPayload(BaseModel):
     device_id: int
-    action_type: str                 # restart_service, kill_process, cleanup_temp
-    target: Optional[str] = None     # service name or process name
+    action_type: str
+    target: Optional[str] = None
 
 
-class MaintenanceTaskOut(BaseModel):
+class MaintenanceTaskOut(ORMBase):
     id: int
     device_id: Optional[int] = None
     title: str
@@ -323,7 +302,50 @@ class MaintenanceTaskOut(BaseModel):
     next_run: Optional[datetime.datetime] = None
     enabled: bool
 
-    class Config:
-        from_attributes = True
+
+# ── AIOps & Machine Learning Schemas ──
+
+class AnomalyItem(BaseModel):
+    timestamp: Optional[str] = None
+    metric_name: str
+    metric_label: str
+    value: float
+    baseline_mean: float
+    z_score: float
+    priority_score: float
+    severity: str
+    reason: str
 
 
+class FailureForecastWarning(BaseModel):
+    resource: str
+    severity: str
+    current_value: str
+    estimated_ttf: str
+    recommendation: str
+
+
+class FailureForecastResponse(BaseModel):
+    has_critical_failure_risk: bool
+    risk_level: str
+    warnings: list[FailureForecastWarning]
+
+
+class RootCauseSuggestionItem(BaseModel):
+    anomaly_metric: str
+    trigger_value: str
+    root_cause_type: str
+    suspect: str
+    suspect_detail: str
+    suggested_action: Optional[str] = None
+    suggested_target: Optional[str] = None
+    reasoning: str
+
+
+class AIOpsHealthInsightsResponse(BaseModel):
+    risk_level: str
+    anomaly_count: int
+    summary: str
+    action_item: str
+    health_score: int
+    generated_at: str
