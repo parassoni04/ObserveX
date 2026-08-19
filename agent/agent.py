@@ -1,24 +1,19 @@
 """
-ObserveX Windows Agent
-======================
-Collects system metrics using SystemMonitor and streams them
-to the centralized ObserveX server.
+ObserveX Windows Agent — Collects system metrics and streams them to the centralized server.
 
 Usage:
     python -m agent.agent
     python -m agent.agent --server http://10.0.0.5:8000
     python -m agent.agent --key my-secure-key --name MyPC
 """
-
 import sys
 import os
+import subprocess
 import time
 import asyncio
 import platform
 import argparse
-import threading
 
-# Ensure project root is on the path so 'monitor' can be imported
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from monitor import SystemMonitor
@@ -36,11 +31,8 @@ def parse_args():
 
 
 def execute_remediation_command(cmd: dict):
-    """Execute automated IT remediation action on local Windows host."""
-    action = cmd.get("action")
-    target = cmd.get("target")
+    action, target = cmd.get("action"), cmd.get("target")
     print(f"[Agent Action] Executing remediation: {action} (target={target})")
-
     try:
         if action == "restart_service" and target:
             subprocess.run(["net", "stop", target], capture_output=True, text=True, timeout=15)
@@ -48,14 +40,10 @@ def execute_remediation_command(cmd: dict):
             print(f"[Agent Action] Service '{target}' restart output: {res.stdout.strip()}")
         elif action == "kill_process" and target:
             import psutil
-            killed = 0
-            for proc in psutil.process_iter(['pid', 'name']):
-                try:
-                    if proc.info['name'] and target.lower() in proc.info['name'].lower():
-                        proc.kill()
-                        killed += 1
-                except Exception:
-                    pass
+            killed = sum(1 for p in psutil.process_iter(['pid', 'name'])
+                         if p.info['name'] and target.lower() in p.info['name'].lower()
+                         and (p.kill() or True))
+            # ponytail: p.kill() returns None, `or True` makes the comprehension count it
             print(f"[Agent Action] Terminated {killed} instances of process '{target}'")
         elif action == "cleanup_temp":
             temp_dir = os.environ.get("TEMP", r"C:\Windows\Temp")
@@ -74,8 +62,6 @@ def execute_remediation_command(cmd: dict):
 
 async def run_agent():
     args = parse_args()
-
-    # Override settings from CLI args
     if args.server:
         agent_settings.OBSERVEX_SERVER_URL = args.server
     if args.key:
@@ -84,90 +70,67 @@ async def run_agent():
         agent_settings.OBSERVEX_STREAM_INTERVAL = args.interval
 
     device_name = args.name or agent_settings.device_name
+    print(f"{'=' * 60}\n  ObserveX Agent v2.0.0\n  Device:  {device_name}\n  Server:  {agent_settings.OBSERVEX_SERVER_URL}\n  Stream:  every {agent_settings.OBSERVEX_STREAM_INTERVAL}s\n{'=' * 60}")
 
-    print("=" * 60)
-    print(f"  ObserveX Agent v2.0.0")
-    print(f"  Device:  {device_name}")
-    print(f"  Server:  {agent_settings.OBSERVEX_SERVER_URL}")
-    print(f"  Stream:  every {agent_settings.OBSERVEX_STREAM_INTERVAL}s")
-    print("=" * 60)
-
-    # Initialize the system monitor
     print("[Agent] Initializing system monitor...")
     monitor = SystemMonitor()
-
     await asyncio.sleep(2.0)
 
     sender = AgentSender()
 
-    registered = False
+    # Register with exponential backoff
     backoff = 2.0
-    while not registered:
+    while True:
         try:
-            await sender.register(
-                hostname=device_name,
-                os_name=platform.system(),
-                os_version=platform.version(),
-            )
-            registered = True
+            await sender.register(hostname=device_name, os_name=platform.system(), os_version=platform.version())
+            break
         except Exception as e:
             print(f"[Agent] Registration failed ({e}). Retrying in {backoff:.0f}s...")
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 60.0)
 
-    try:
-        await sender.send_static_info(monitor.static_info)
-    except Exception as e:
-        print(f"[Agent] Failed to upload static info: {e}")
-
-    try:
-        await sender.send_software_list(monitor.installed_software)
-    except Exception as e:
-        print(f"[Agent] Failed to upload software list: {e}")
-
-    try:
-        events = monitor.get_event_logs(limit=200)
-        await sender.send_event_logs(events)
-    except Exception as e:
-        print(f"[Agent] Failed to upload event logs: {e}")
+    # Upload initial data
+    for label, fn in [
+        ("static info", lambda: sender.send_static_info(monitor.static_info)),
+        ("software list", lambda: sender.send_software_list(monitor.installed_software)),
+        ("event logs", lambda: sender.send_event_logs(monitor.get_event_logs(limit=200))),
+    ]:
+        try:
+            await fn()
+        except Exception as e:
+            print(f"[Agent] Failed to upload {label}: {e}")
 
     print("[Agent] Starting metric stream...")
-
-    heartbeat_interval = 10.0
-    event_refresh_interval = 300.0
-    last_heartbeat = time.time()
-    last_event_refresh = time.time()
-    reconnect_backoff = 1.0
-    process_tick = 0
-    process_send_interval = 5
+    heartbeat_interval, event_refresh_interval = 10.0, 300.0
+    last_heartbeat = last_event_refresh = time.time()
+    reconnect_backoff, process_tick = 1.0, 0
 
     while True:
         if not sender.is_ws_connected:
-            connected = await sender.connect_ws()
-            if not connected:
+            if not await sender.connect_ws():
                 print(f"[Agent] WebSocket reconnect in {reconnect_backoff:.0f}s...")
                 await asyncio.sleep(reconnect_backoff)
                 reconnect_backoff = min(reconnect_backoff * 2, 30.0)
                 continue
             reconnect_backoff = 1.0
 
-        # Check for incoming remote automation commands from server
-        cmds = await sender.check_incoming_commands()
-        for cmd in cmds:
-            execute_remediation_command(cmd)
+        for cmd in await sender.check_incoming_commands():
+            if cmd.get("action") == "set_interval":
+                agent_settings.OBSERVEX_STREAM_INTERVAL = max(0.1, min(60.0, float(cmd.get("value", 1.0))))
+                print(f"[Agent] Stream interval updated to {agent_settings.OBSERVEX_STREAM_INTERVAL:.1f}s by server")
+            else:
+                execute_remediation_command(cmd)
 
         metrics = monitor.get_live_metrics()
-
         process_tick += 1
-        if process_tick >= process_send_interval:
+        if process_tick >= 5:
             process_tick = 0
             try:
                 metrics["processes"] = monitor.get_process_list()
             except Exception:
                 pass
 
-        sent = await sender.send_metrics(metrics)
-        if not sent:
+        if not await sender.send_metrics(metrics):
             continue
 
         now = time.time()
@@ -181,8 +144,7 @@ async def run_agent():
         if now - last_event_refresh >= event_refresh_interval:
             last_event_refresh = now
             try:
-                events = monitor.get_event_logs(limit=200)
-                await sender.send_event_logs(events)
+                await sender.send_event_logs(monitor.get_event_logs(limit=200))
             except Exception as e:
                 print(f"[Agent] Event log refresh failed: {e}")
 
