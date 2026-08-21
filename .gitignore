@@ -4,3 +4,9 @@ venv
 .env
 *.pyc
 *.pyo
+*.db
+*.exe
+*.spec
+build/
+dist/
+installer/Output/

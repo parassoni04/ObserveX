@@ -21,6 +21,12 @@ pyjwt>=2.8.0
 bcrypt>=4.1.0
 python-multipart>=0.0.9
 
+# Configuration
+pyyaml>=6.0
+
+# Database migrations
+alembic>=1.13.0
+
 # System monitoring (agent / standalone)
 psutil>=5.9.0
 pywin32>=306

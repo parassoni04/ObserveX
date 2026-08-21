@@ -1,5 +1,6 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, JSON, Index
+import uuid
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, JSON, Index, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -28,27 +29,75 @@ class User(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     organization = relationship("Organization", back_populates="users")
-    assigned_devices = relationship("Device", back_populates="assigned_user")
+    # Legacy FK relationship preserved for backward compat queries
+    assigned_devices = relationship("Device", back_populates="assigned_user", foreign_keys="Device.assigned_user_id")
+    # Many-to-many device assignments
+    device_assignments = relationship("DeviceUserAssignment", back_populates="user", foreign_keys="DeviceUserAssignment.user_id")
 
 
 class Device(Base):
     __tablename__ = "devices"
     id = Column(Integer, primary_key=True, autoincrement=True)
+    device_uuid = Column(String(36), unique=True, index=True, nullable=True, default=lambda: str(uuid.uuid4()))
     hostname = Column(String(255), nullable=False)
     os_name = Column(String(100), nullable=True)
     os_version = Column(String(100), nullable=True)
-    api_key = Column(String(255), nullable=False)
+    # Legacy plaintext key — kept for migration, will be removed in future
+    api_key = Column(String(255), nullable=True)
+    # Hashed credential (bcrypt hash of the API key)
+    api_key_hash = Column(String(255), nullable=True)
+    agent_version = Column(String(50), nullable=True)
+    # Device status: pending, active, offline, stale, revoked
+    status = Column(String(20), default="pending", nullable=False)
     registered_at = Column(DateTime, default=datetime.datetime.utcnow)
     last_seen = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
     is_online = Column(Boolean, default=False)
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    # Legacy single-user assignment (preserved for backward compat)
     assigned_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     organization = relationship("Organization", back_populates="devices")
-    assigned_user = relationship("User", back_populates="assigned_devices")
+    assigned_user = relationship("User", back_populates="assigned_devices", foreign_keys=[assigned_user_id])
     static_info = relationship("DeviceStaticInfo", back_populates="device", uselist=False, cascade="all, delete-orphan")
     metric_snapshots = relationship("MetricSnapshot", back_populates="device", cascade="all, delete-orphan")
     alerts = relationship("Alert", back_populates="device", cascade="all, delete-orphan")
     software = relationship("DeviceSoftware", back_populates="device", cascade="all, delete-orphan")
+    # Many-to-many user assignments
+    user_assignments = relationship("DeviceUserAssignment", back_populates="device")
+
+
+class DeviceUserAssignment(Base):
+    """Many-to-many association between devices and users."""
+    __tablename__ = "device_user_assignments"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    assigned_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    assigned_at = Column(DateTime, default=datetime.datetime.utcnow)
+    device = relationship("Device", back_populates="user_assignments")
+    user = relationship("User", back_populates="device_assignments", foreign_keys=[user_id])
+    assigner = relationship("User", foreign_keys=[assigned_by])
+    __table_args__ = (
+        UniqueConstraint("device_id", "user_id", name="uq_device_user"),
+        Index("ix_dua_device", "device_id"),
+        Index("ix_dua_user", "user_id"),
+    )
+
+
+class EnrollmentCode(Base):
+    """One-time or reusable enrollment codes for device registration."""
+    __tablename__ = "enrollment_codes"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(20), unique=True, nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    # Reusable codes: max_uses=0 means unlimited; usage_count tracks uses
+    max_uses = Column(Integer, default=0)
+    usage_count = Column(Integer, default=0)
+    is_revoked = Column(Boolean, default=False)
+    organization = relationship("Organization")
+    created_by = relationship("User")
 
 
 class DeviceStaticInfo(Base):

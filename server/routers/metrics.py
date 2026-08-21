@@ -1,26 +1,40 @@
+"""
+ObserveX Server — Metric History & Analytics Endpoints.
+
+All endpoints require authentication and device-level authorization.
+"""
 import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.database import get_db
-from server.models import Device, MetricSnapshot, Alert
+from server.models import Device, MetricSnapshot, Alert, User
 from server.schemas import MetricSnapshotOut, MetricHistoryResponse, MetricSummaryResponse
 from server.websockets.hub import connection_manager
+from server.auth import get_current_user
+from server.authorization import check_device_access
 
 router = APIRouter(prefix="/api/v1/devices/{device_id}/metrics", tags=["metrics"])
 
 
-async def _dev(device_id: int, db: AsyncSession) -> Device:
+async def _dev_authorized(device_id: int, current_user: User, db: AsyncSession) -> Device:
+    """Get device and verify user access."""
     d = await db.get(Device, device_id)
     if not d:
         raise HTTPException(status_code=404, detail="Device not found")
+    if not await check_device_access(current_user, device_id, db):
+        raise HTTPException(status_code=403, detail="You do not have access to this device")
     return d
 
 
 @router.get("/latest", response_model=MetricSnapshotOut | None)
-async def get_latest_metric(device_id: int, db: AsyncSession = Depends(get_db)):
-    await _dev(device_id, db)
+async def get_latest_metric(
+    device_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _dev_authorized(device_id, current_user, db)
     return (await db.execute(
         select(MetricSnapshot).where(MetricSnapshot.device_id == device_id).order_by(desc(MetricSnapshot.timestamp)).limit(1)
     )).scalar_one_or_none()
@@ -32,8 +46,9 @@ async def get_metric_history(
     minutes: int = Query(default=60, ge=1, le=10080),
     limit: int = Query(default=500, ge=1, le=5000),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    await _dev(device_id, db)
+    await _dev_authorized(device_id, current_user, db)
     since = datetime.datetime.utcnow() - datetime.timedelta(minutes=minutes)
     snaps = (await db.execute(
         select(MetricSnapshot).where(MetricSnapshot.device_id == device_id, MetricSnapshot.timestamp >= since)
@@ -43,8 +58,13 @@ async def get_metric_history(
 
 
 @router.get("/summary", response_model=MetricSummaryResponse)
-async def get_metric_summary(device_id: int, minutes: int = Query(default=60, ge=1, le=10080), db: AsyncSession = Depends(get_db)):
-    await _dev(device_id, db)
+async def get_metric_summary(
+    device_id: int,
+    minutes: int = Query(default=60, ge=1, le=10080),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _dev_authorized(device_id, current_user, db)
     since = datetime.datetime.utcnow() - datetime.timedelta(minutes=minutes)
 
     is_sqlite = "sqlite" in str(db.bind.url if db.bind else "")
@@ -73,8 +93,9 @@ async def get_metric_trends(
     device_id: int,
     period: str = Query(default="24h", pattern="^(15m|1h|6h|24h|7d)$"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    await _dev(device_id, db)
+    await _dev_authorized(device_id, current_user, db)
     minutes = {"15m": 15, "1h": 60, "6h": 360, "24h": 1440, "7d": 10080}[period]
     since = datetime.datetime.utcnow() - datetime.timedelta(minutes=minutes)
 
@@ -90,7 +111,6 @@ async def get_metric_trends(
     if not snapshots:
         return empty
 
-    # Extract all metric arrays in a single pass
     keys = {"cpu_usage": [], "ram_usage_percent": [], "disk_read_speed": [], "disk_write_speed": [], "net_download_speed": [], "net_upload_speed": []}
     for s in snapshots:
         m = s.metrics
@@ -123,8 +143,9 @@ async def get_log_correlation(
     timestamp: str = Query(description="Target ISO timestamp"),
     window_minutes: int = Query(default=5, ge=1, le=60),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    await _dev(device_id, db)
+    await _dev_authorized(device_id, current_user, db)
     try:
         dt = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     except Exception:

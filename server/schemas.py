@@ -22,16 +22,28 @@ class DeviceRegisterResponse(BaseModel):
     status: str = "registered"
 
 
+class AssignedUserSummary(BaseModel):
+    """Lightweight user info embedded in device responses."""
+    id: int
+    username: str
+    full_name: Optional[str] = None
+    email: str
+
+
 class DeviceOut(ORMBase):
     id: int
+    device_uuid: Optional[str] = None
     hostname: str
     os_name: Optional[str] = None
     os_version: Optional[str] = None
+    agent_version: Optional[str] = None
+    status: str = "pending"
     registered_at: Optional[datetime.datetime] = None
     last_seen: Optional[datetime.datetime] = None
     is_online: bool = False
     organization_id: Optional[int] = None
     assigned_user_id: Optional[int] = None
+    assigned_users: list[AssignedUserSummary] = []
 
 
 # ── Auth & User Schemas ──
@@ -104,7 +116,63 @@ class OrgOverviewResponse(BaseModel):
 class DeviceStatusOut(BaseModel):
     device_id: int
     is_online: bool
+    status: str = "pending"
     last_seen: Optional[datetime.datetime] = None
+
+
+# ── Enrollment Schemas ──
+
+class EnrollmentCodeCreateRequest(BaseModel):
+    """Admin creates an enrollment code."""
+    organization_id: Optional[int] = None
+    expires_in_hours: int = 24
+    max_uses: int = 0  # 0 = unlimited (reusable)
+
+
+class EnrollmentCodeOut(ORMBase):
+    id: int
+    code: str
+    organization_id: Optional[int] = None
+    created_by_user_id: Optional[int] = None
+    created_at: Optional[datetime.datetime] = None
+    expires_at: datetime.datetime
+    max_uses: int
+    usage_count: int
+    is_revoked: bool
+
+
+class EnrollmentRequest(BaseModel):
+    """Agent sends this to enroll with the server."""
+    enrollment_code: str
+    hostname: str
+    os_name: Optional[str] = None
+    os_version: Optional[str] = None
+
+
+class EnrollmentResponse(BaseModel):
+    """Server returns this after successful enrollment."""
+    device_id: int
+    device_uuid: str
+    api_key: str
+    status: str = "enrolled"
+
+
+# ── Device Assignment Schemas ──
+
+class DeviceAssignmentCreateRequest(BaseModel):
+    device_id: int
+    user_id: int
+
+
+class DeviceAssignmentOut(ORMBase):
+    id: int
+    device_id: int
+    user_id: int
+    assigned_by: Optional[int] = None
+    assigned_at: Optional[datetime.datetime] = None
+    # Enriched fields (populated manually, not from ORM)
+    device_hostname: Optional[str] = None
+    username: Optional[str] = None
 
 
 # ── Static Info Schemas ──
@@ -176,7 +244,7 @@ class SoftwarePayload(BaseModel):
 
 class HeartbeatRequest(BaseModel):
     device_id: int
-    api_key: str
+    api_key: Optional[str] = None  # Legacy compat; new agents use Bearer token
 
 
 class HeartbeatResponse(BaseModel):

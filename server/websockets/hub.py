@@ -1,6 +1,15 @@
+"""
+ObserveX Server — WebSocket Connection Manager.
+
+Manages agent and dashboard WebSocket connections:
+  - Agent connections: indexed by device_id
+  - Dashboard connections: indexed by WebSocket with user_id and subscriptions
+  - Metric broadcast: agent → subscribed dashboards
+  - DB snapshot batching: every N metrics
+"""
 import asyncio
 import datetime
-from typing import Any
+from typing import Any, Optional
 from fastapi import WebSocket
 import server.database as db
 from server.models import MetricSnapshot
@@ -11,7 +20,8 @@ class ConnectionManager:
 
     def __init__(self):
         self.agent_connections: dict[int, WebSocket] = {}
-        self.dashboard_connections: dict[WebSocket, set[int]] = {}
+        # Dashboard connections: ws → {"user_id": int|None, "subscriptions": set[int]}
+        self.dashboard_connections: dict[WebSocket, dict[str, Any]] = {}
         self.latest_metrics: dict[int, dict[str, Any]] = {}
         self.device_processes: dict[int, list] = {}
         self.device_events: dict[int, list] = {}
@@ -48,26 +58,29 @@ class ConnectionManager:
         except Exception as e:
             print(f"[WS Hub] Error storing snapshot for device {device_id}: {e}")
 
-    async def connect_dashboard(self, websocket: WebSocket):
+    async def connect_dashboard(self, websocket: WebSocket, user_id: Optional[int] = None):
         await websocket.accept()
-        self.dashboard_connections[websocket] = set()
+        self.dashboard_connections[websocket] = {
+            "user_id": user_id,
+            "subscriptions": set(),
+        }
 
     def disconnect_dashboard(self, websocket: WebSocket):
         self.dashboard_connections.pop(websocket, None)
 
     def subscribe_dashboard(self, websocket: WebSocket, device_id: int):
         if websocket in self.dashboard_connections:
-            self.dashboard_connections[websocket].add(device_id)
+            self.dashboard_connections[websocket]["subscriptions"].add(device_id)
 
     def unsubscribe_dashboard(self, websocket: WebSocket, device_id: int):
         if websocket in self.dashboard_connections:
-            self.dashboard_connections[websocket].discard(device_id)
+            self.dashboard_connections[websocket]["subscriptions"].discard(device_id)
 
     async def _broadcast_to_dashboards(self, device_id: int, data: dict):
         message = {"type": "metrics", "device_id": device_id, "data": data}
         dead = []
-        for ws, subs in self.dashboard_connections.items():
-            if device_id in subs:
+        for ws, info in self.dashboard_connections.items():
+            if device_id in info["subscriptions"]:
                 try:
                     await ws.send_json(message)
                 except Exception:

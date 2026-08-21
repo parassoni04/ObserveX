@@ -1,3 +1,10 @@
+"""
+ObserveX Server — Background Tasks.
+
+- Metric cleanup (retention-based deletion)
+- Device health state machine (Online → Stale → Offline)
+- Alert rule evaluation engine
+"""
 import asyncio
 import datetime
 from sqlalchemy import delete, select, update
@@ -22,16 +29,60 @@ async def cleanup_old_metrics():
 
 
 async def mark_stale_devices_offline():
-    """Periodically mark devices as offline if no recent heartbeat."""
+    """
+    Tri-state device health state machine:
+      🟢 Online  → last_seen within HEARTBEAT_ONLINE_TIMEOUT
+      🟡 Stale   → last_seen between ONLINE and STALE timeout
+      🔴 Offline → last_seen beyond HEARTBEAT_STALE_TIMEOUT
+    """
+    online_timeout = settings.HEARTBEAT_ONLINE_TIMEOUT
+    stale_timeout = settings.HEARTBEAT_STALE_TIMEOUT
+    check_interval = settings.HEARTBEAT_CHECK_INTERVAL
+
     while True:
         try:
-            cutoff = datetime.datetime.utcnow() - datetime.timedelta(seconds=30)
+            now = datetime.datetime.utcnow()
+            stale_cutoff = now - datetime.timedelta(seconds=online_timeout)
+            offline_cutoff = now - datetime.timedelta(seconds=stale_timeout)
+
             async with db.async_session_factory() as session:
-                await session.execute(update(Device).where(Device.is_online == True, Device.last_seen < cutoff).values(is_online=False))
+                # Online → Stale: devices that were online but haven't sent heartbeat
+                stale_result = await session.execute(
+                    update(Device)
+                    .where(
+                        Device.is_online == True,
+                        Device.status == "active",
+                        Device.last_seen < stale_cutoff,
+                        Device.last_seen >= offline_cutoff,
+                    )
+                    .values(status="stale")
+                )
+                if stale_result.rowcount > 0:
+                    print(f"[Health] {stale_result.rowcount} device(s) marked as stale")
+
+                # Stale → Offline: devices that have been stale too long
+                offline_result = await session.execute(
+                    update(Device)
+                    .where(
+                        Device.last_seen < offline_cutoff,
+                        Device.status.in_(["active", "stale"]),
+                    )
+                    .values(is_online=False, status="offline")
+                )
+                if offline_result.rowcount > 0:
+                    print(f"[Health] {offline_result.rowcount} device(s) marked as offline")
+
+                # Also handle legacy: any device still marked is_online but old
+                await session.execute(
+                    update(Device)
+                    .where(Device.is_online == True, Device.last_seen < offline_cutoff)
+                    .values(is_online=False)
+                )
+
                 await session.commit()
         except Exception as e:
-            print(f"[Stale Check] Error: {e}")
-        await asyncio.sleep(15)
+            print(f"[Health] Error: {e}")
+        await asyncio.sleep(check_interval)
 
 
 async def evaluate_alert_rules():

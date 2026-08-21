@@ -20,6 +20,14 @@ class ServerSettings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
+    # Heartbeat state machine timeouts (seconds)
+    HEARTBEAT_ONLINE_TIMEOUT: int = 30      # Online → Stale after this
+    HEARTBEAT_STALE_TIMEOUT: int = 120      # Stale → Offline after this
+    HEARTBEAT_CHECK_INTERVAL: int = 15      # How often to run the stale check
+
+    # Enrollment
+    ENROLLMENT_CODE_TTL_HOURS: int = 24     # Default enrollment code expiry
+
     class Config:
         env_file = str(_env_path)
         env_file_encoding = "utf-8"

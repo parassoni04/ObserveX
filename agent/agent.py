@@ -3,8 +3,8 @@ ObserveX Windows Agent — Collects system metrics and streams them to the centr
 
 Usage:
     python -m agent.agent
+    python -m agent.agent --server https://observex.example.com --enroll OX-7F29-A82D
     python -m agent.agent --server http://10.0.0.5:8000
-    python -m agent.agent --key my-secure-key --name MyPC
 """
 import sys
 import os
@@ -17,16 +17,20 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from monitor import SystemMonitor
-from agent.config import agent_settings
+from agent.config import agent_settings, save_config, load_config
 from agent.sender import AgentSender
+from agent.heartbeat import HeartbeatManager
+from agent.enrollment import enroll_device, interactive_enrollment
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="ObserveX Windows Agent")
-    parser.add_argument("--server", type=str, default=None, help="Server URL (overrides .env)")
-    parser.add_argument("--key", type=str, default=None, help="API key (overrides .env)")
-    parser.add_argument("--name", type=str, default=None, help="Device name (overrides .env / hostname)")
+    parser.add_argument("--server", type=str, default=None, help="Server URL (overrides config)")
+    parser.add_argument("--enroll", type=str, default=None, metavar="CODE", help="Enrollment code for first-time enrollment")
+    parser.add_argument("--name", type=str, default=None, help="Device name (overrides config / hostname)")
     parser.add_argument("--interval", type=float, default=None, help="Metric stream interval in seconds")
+    # Legacy compat
+    parser.add_argument("--key", type=str, default=None, help="API key (legacy, use --enroll instead)")
     return parser.parse_args()
 
 
@@ -43,7 +47,6 @@ def execute_remediation_command(cmd: dict):
             killed = sum(1 for p in psutil.process_iter(['pid', 'name'])
                          if p.info['name'] and target.lower() in p.info['name'].lower()
                          and (p.kill() or True))
-            # ponytail: p.kill() returns None, `or True` makes the comprehension count it
             print(f"[Agent Action] Terminated {killed} instances of process '{target}'")
         elif action == "cleanup_temp":
             temp_dir = os.environ.get("TEMP", r"C:\Windows\Temp")
@@ -62,32 +65,70 @@ def execute_remediation_command(cmd: dict):
 
 async def run_agent():
     args = parse_args()
-    if args.server:
-        agent_settings.OBSERVEX_SERVER_URL = args.server
-    if args.key:
-        agent_settings.OBSERVEX_API_KEY = args.key
-    if args.interval:
-        agent_settings.OBSERVEX_STREAM_INTERVAL = args.interval
 
-    device_name = args.name or agent_settings.device_name
-    print(f"{'=' * 60}\n  ObserveX Agent v2.0.0\n  Device:  {device_name}\n  Server:  {agent_settings.OBSERVEX_SERVER_URL}\n  Stream:  every {agent_settings.OBSERVEX_STREAM_INTERVAL}s\n{'=' * 60}")
+    # Apply CLI overrides to config
+    if args.server:
+        agent_settings.server.url = args.server
+    if args.interval:
+        agent_settings.agent.metrics_interval = args.interval
+    if args.key:
+        agent_settings.device.credential = args.key
+    if args.name:
+        agent_settings.device.name = args.name
+
+    # ── Enrollment Check ──
+    if args.enroll:
+        # Explicit enrollment via CLI flag
+        server_url = agent_settings.server.url
+        await enroll_device(server_url, args.enroll, args.name)
+    elif not agent_settings.is_enrolled:
+        # Not enrolled and no enrollment code given — try interactive
+        print("[Agent] Device is not enrolled with any server.")
+        if sys.stdin.isatty():
+            success = await interactive_enrollment()
+            if not success:
+                print("[Agent] Cannot start without enrollment. Exiting.")
+                sys.exit(1)
+        else:
+            # Non-interactive mode (e.g., running as service) — try legacy registration
+            print("[Agent] Running in non-interactive mode. Attempting legacy registration...")
+
+    device_name = agent_settings.device.resolved_name
+    print(f"\n{'=' * 60}")
+    print(f"  ObserveX Agent v{agent_settings.agent.version}")
+    print(f"  Device:  {device_name}")
+    print(f"  Server:  {agent_settings.server.url}")
+    print(f"  Stream:  every {agent_settings.agent.metrics_interval}s")
+    print(f"  Enrolled: {'Yes' if agent_settings.is_enrolled else 'No (legacy mode)'}")
+    print(f"{'=' * 60}\n")
 
     print("[Agent] Initializing system monitor...")
     monitor = SystemMonitor()
     await asyncio.sleep(2.0)
 
     sender = AgentSender()
+    heartbeat = HeartbeatManager(sender)
 
-    # Register with exponential backoff
-    backoff = 2.0
-    while True:
-        try:
-            await sender.register(hostname=device_name, os_name=platform.system(), os_version=platform.version())
-            break
-        except Exception as e:
-            print(f"[Agent] Registration failed ({e}). Retrying in {backoff:.0f}s...")
-            await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, 60.0)
+    # Register with exponential backoff (legacy or post-enrollment)
+    if not agent_settings.is_enrolled:
+        # Legacy registration flow
+        backoff = 2.0
+        while True:
+            try:
+                await sender.register(
+                    hostname=device_name,
+                    os_name=platform.system(),
+                    os_version=platform.version(),
+                )
+                break
+            except Exception as e:
+                print(f"[Agent] Registration failed ({e}). Retrying in {backoff:.0f}s...")
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, agent_settings.network.max_reconnect_backoff)
+    else:
+        # Enrolled — device_id already set from config
+        sender.device_id = agent_settings.device.device_id
+        print(f"[Agent] Using enrolled identity: device_id={sender.device_id}")
 
     # Upload initial data
     for label, fn in [
@@ -101,23 +142,27 @@ async def run_agent():
             print(f"[Agent] Failed to upload {label}: {e}")
 
     print("[Agent] Starting metric stream...")
-    heartbeat_interval, event_refresh_interval = 10.0, 300.0
-    last_heartbeat = last_event_refresh = time.time()
-    reconnect_backoff, process_tick = 1.0, 0
+    event_refresh_interval = 300.0
+    last_event_refresh = time.time()
+    reconnect_backoff = 1.0
+    process_tick = 0
 
     while True:
         if not sender.is_ws_connected:
             if not await sender.connect_ws():
                 print(f"[Agent] WebSocket reconnect in {reconnect_backoff:.0f}s...")
                 await asyncio.sleep(reconnect_backoff)
-                reconnect_backoff = min(reconnect_backoff * 2, 30.0)
+                reconnect_backoff = min(
+                    reconnect_backoff * 2,
+                    agent_settings.network.max_reconnect_backoff,
+                )
                 continue
             reconnect_backoff = 1.0
 
         for cmd in await sender.check_incoming_commands():
             if cmd.get("action") == "set_interval":
-                agent_settings.OBSERVEX_STREAM_INTERVAL = max(0.1, min(60.0, float(cmd.get("value", 1.0))))
-                print(f"[Agent] Stream interval updated to {agent_settings.OBSERVEX_STREAM_INTERVAL:.1f}s by server")
+                agent_settings.agent.metrics_interval = max(0.1, min(60.0, float(cmd.get("value", 1.0))))
+                print(f"[Agent] Stream interval updated to {agent_settings.agent.metrics_interval:.1f}s by server")
             else:
                 execute_remediation_command(cmd)
 
@@ -133,14 +178,11 @@ async def run_agent():
         if not await sender.send_metrics(metrics):
             continue
 
-        now = time.time()
-        if now - last_heartbeat >= heartbeat_interval:
-            last_heartbeat = now
-            try:
-                await sender.send_heartbeat()
-            except Exception as e:
-                print(f"[Agent] Heartbeat failed: {e}")
+        # Application-level heartbeat
+        await heartbeat.tick()
 
+        # Periodic event log refresh
+        now = time.time()
         if now - last_event_refresh >= event_refresh_interval:
             last_event_refresh = now
             try:
@@ -148,7 +190,7 @@ async def run_agent():
             except Exception as e:
                 print(f"[Agent] Event log refresh failed: {e}")
 
-        await asyncio.sleep(agent_settings.OBSERVEX_STREAM_INTERVAL)
+        await asyncio.sleep(agent_settings.agent.metrics_interval)
 
 
 def main():
