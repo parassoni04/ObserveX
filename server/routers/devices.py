@@ -1,48 +1,59 @@
 """
-ObserveX Server — Device CRUD & Information Endpoints.
+Devices Router
+==============
 
-All endpoints require authentication. Device-level authorization
-ensures users can only access devices assigned to them.
-Admins can access all devices.
+Device CRUD & information endpoints. All endpoints require authentication.
+Admins can access any device in their org. Regular users can only access
+assigned devices. Cross-org access is always denied (returns 404).
 """
 import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from server.database import get_db
 from server.models import Device, DeviceStaticInfo, DeviceSoftware, User, DeviceUserAssignment
-from server.schemas import DeviceOut, DeviceStatusOut, StaticInfoOut, SoftwareItem, DeviceAssignRequest, AssignedUserSummary
-from server.auth import get_current_user, require_role
-from server.authorization import check_device_access, get_accessible_device_ids, require_admin
+from server.schemas.device import DeviceOut, DeviceStatusOut, AssignedUserSummary, DeviceAssignmentCreateRequest, DeviceAssignmentOut
+from server.schemas.telemetry import StaticInfoOut, SoftwareItem
+from server.auth import get_current_user
+from server.authorization import check_device_access, get_accessible_device_ids, require_admin, TenantGuard
+from server.security import log_audit, ACTIONS
+from server.logging import get_logger
+
+logger = get_logger("devices")
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 
 
-async def _get_device_or_404(device_id: int, db: AsyncSession) -> Device:
+async def _get_authorized_device_or_404(device_id: int, user: User, db: AsyncSession) -> Device:
+    """Fetch device and verify user has access, raising 404 if not found or unauthorized."""
     device = await db.get(Device, device_id)
     if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if not await check_device_access(user, device_id, db):
+        logger.warning("Unauthorized device access: user_id=%s device_id=%s", user.id, device_id)
         raise HTTPException(status_code=404, detail="Device not found")
     return device
 
 
 async def _enrich_device_out(device: Device, db: AsyncSession) -> DeviceOut:
-    """Build DeviceOut with assigned_users populated from the association table."""
-    # Fetch assigned users from many-to-many table
+    """Build DeviceOut with assigned_users from the association table."""
     result = await db.execute(
-        select(DeviceUserAssignment).where(DeviceUserAssignment.device_id == device.id)
+        select(DeviceUserAssignment)
+        .options(selectinload(DeviceUserAssignment.user))
+        .where(DeviceUserAssignment.device_id == device.id)
     )
     assignments = result.scalars().all()
 
-    assigned_users = []
-    for a in assignments:
-        user = await db.get(User, a.user_id)
-        if user:
-            assigned_users.append(AssignedUserSummary(
-                id=user.id, username=user.username,
-                full_name=user.full_name, email=user.email,
-            ))
+    assigned_users = [
+        AssignedUserSummary(
+            id=a.user.id, username=a.user.username,
+            full_name=a.user.full_name, email=a.user.email,
+        )
+        for a in assignments if a.user
+    ]
 
     return DeviceOut(
         id=device.id,
@@ -56,7 +67,6 @@ async def _enrich_device_out(device: Device, db: AsyncSession) -> DeviceOut:
         last_seen=device.last_seen,
         is_online=device.is_online,
         organization_id=device.organization_id,
-        assigned_user_id=device.assigned_user_id,
         assigned_users=assigned_users,
     )
 
@@ -66,12 +76,16 @@ async def list_devices(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List devices accessible to the current user. Admins see all."""
+    """List devices accessible to the current user."""
     accessible_ids = await get_accessible_device_ids(current_user, db)
 
     if accessible_ids is None:
-        # Admin — all devices
-        stmt = select(Device).order_by(Device.hostname)
+        # Admin — scoped to organization
+        stmt = (
+            select(Device)
+            .where(Device.organization_id == current_user.organization_id)
+            .order_by(Device.hostname)
+        )
     else:
         if not accessible_ids:
             return []
@@ -87,68 +101,35 @@ async def get_device(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get device details. Requires access to the device."""
-    device = await _get_device_or_404(device_id, db)
-    if not await check_device_access(current_user, device_id, db):
-        raise HTTPException(status_code=403, detail="You do not have access to this device")
-    return await _enrich_device_out(device, db)
-
-
-@router.post("/{device_id}/assign", response_model=DeviceOut)
-async def assign_device(
-    device_id: int,
-    req: DeviceAssignRequest,
-    db: AsyncSession = Depends(get_db),
-    admin_user: User = Depends(require_admin),
-):
-    """Assign device to a user (admin only). Updates both legacy FK and association table."""
-    device = await _get_device_or_404(device_id, db)
-
-    if req.assigned_user_id is not None:
-        if req.assigned_user_id > 0:
-            target_user = await db.get(User, req.assigned_user_id)
-            if not target_user:
-                raise HTTPException(status_code=404, detail="Assigned user not found")
-
-            # Update legacy FK
-            device.assigned_user_id = target_user.id
-            if target_user.organization_id:
-                device.organization_id = target_user.organization_id
-
-            # Also create many-to-many assignment if not exists
-            existing = await db.execute(
-                select(DeviceUserAssignment).where(
-                    DeviceUserAssignment.device_id == device_id,
-                    DeviceUserAssignment.user_id == target_user.id,
-                )
-            )
-            if not existing.scalar_one_or_none():
-                db.add(DeviceUserAssignment(
-                    device_id=device_id,
-                    user_id=target_user.id,
-                    assigned_by=admin_user.id,
-                ))
-        else:
-            device.assigned_user_id = None
-
-    if req.organization_id is not None:
-        device.organization_id = req.organization_id if req.organization_id > 0 else None
-
-    await db.commit()
-    await db.refresh(device)
+    """Get device details. Requires access."""
+    device = await _get_authorized_device_or_404(device_id, current_user, db)
     return await _enrich_device_out(device, db)
 
 
 @router.delete("/{device_id}")
 async def delete_device(
     device_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
     """Delete a device (admin only)."""
-    device = await _get_device_or_404(device_id, db)
+    client_ip = request.client.host if request.client else "unknown"
+    device = await _get_authorized_device_or_404(device_id, admin_user, db)
+
+    hostname = device.hostname
     await db.delete(device)
     await db.commit()
+
+    logger.info("Device deleted: device_id=%s hostname=%s by admin=%s", device_id, hostname, admin_user.id)
+    await log_audit(
+        ACTIONS["DEVICE_DELETED"],
+        actor_type="user", actor_id=str(admin_user.id),
+        organization_id=admin_user.organization_id,
+        target_type="device", target_id=str(device_id),
+        ip_address=client_ip,
+        detail=f"Deleted hostname={hostname}",
+    )
     return {"status": "deleted", "device_id": device_id}
 
 
@@ -158,21 +139,10 @@ async def get_device_status(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get device online/offline status. Requires access."""
-    device = await _get_device_or_404(device_id, db)
-    if not await check_device_access(current_user, device_id, db):
-        raise HTTPException(status_code=403, detail="You do not have access to this device")
-
-    is_online = device.is_online
-    if device.last_seen and (datetime.datetime.utcnow() - device.last_seen).total_seconds() > 30:
-        is_online = False
-        if device.is_online:
-            device.is_online = False
-            device.status = "offline"
-            await db.commit()
-
+    """Get device online/offline status."""
+    device = await _get_authorized_device_or_404(device_id, current_user, db)
     return DeviceStatusOut(
-        device_id=device.id, is_online=is_online,
+        device_id=device.id, is_online=device.is_online,
         status=device.status, last_seen=device.last_seen,
     )
 
@@ -183,11 +153,8 @@ async def get_device_static_info(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get device hardware/OS info. Requires access."""
-    await _get_device_or_404(device_id, db)
-    if not await check_device_access(current_user, device_id, db):
-        raise HTTPException(status_code=403, detail="You do not have access to this device")
-
+    """Get device hardware/OS info."""
+    await _get_authorized_device_or_404(device_id, current_user, db)
     info = (await db.execute(
         select(DeviceStaticInfo).where(DeviceStaticInfo.device_id == device_id)
     )).scalar_one_or_none()
@@ -202,11 +169,8 @@ async def get_device_software(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get device installed software. Requires access."""
-    await _get_device_or_404(device_id, db)
-    if not await check_device_access(current_user, device_id, db):
-        raise HTTPException(status_code=403, detail="You do not have access to this device")
-
+    """Get device installed software."""
+    await _get_authorized_device_or_404(device_id, current_user, db)
     rows = (await db.execute(
         select(DeviceSoftware).where(DeviceSoftware.device_id == device_id).order_by(DeviceSoftware.name)
     )).scalars().all()

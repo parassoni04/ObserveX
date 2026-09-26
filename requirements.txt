@@ -1,3 +1,5 @@
+# ── ObserveX Server ──
+
 # Core
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
@@ -27,6 +29,6 @@ pyyaml>=6.0
 # Database migrations
 alembic>=1.13.0
 
-# System monitoring (agent / standalone)
+# System monitoring (agent)
 psutil>=5.9.0
 pywin32>=306

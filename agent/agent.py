@@ -9,6 +9,7 @@ Usage:
 import sys
 import os
 import subprocess
+import re
 import time
 import asyncio
 import platform
@@ -29,25 +30,66 @@ def parse_args():
     parser.add_argument("--enroll", type=str, default=None, metavar="CODE", help="Enrollment code for first-time enrollment")
     parser.add_argument("--name", type=str, default=None, help="Device name (overrides config / hostname)")
     parser.add_argument("--interval", type=float, default=None, help="Metric stream interval in seconds")
-    # Legacy compat
-    parser.add_argument("--key", type=str, default=None, help="API key (legacy, use --enroll instead)")
     return parser.parse_args()
 
 
-def execute_remediation_command(cmd: dict):
-    action, target = cmd.get("action"), cmd.get("target")
+# ── Remediation Command Execution ──
+
+_ALLOWED_AGENT_ACTIONS = {"restart_service", "kill_process", "cleanup_temp"}
+_SAFE_TARGET_REGEX = re.compile(r"^[a-zA-Z0-9_.\- ]{1,128}$")
+
+
+def execute_remediation_command(cmd: dict) -> tuple[str, str]:
+    """
+    Execute a remediation command from the server.
+
+    Returns:
+        (status, output) — "success"/"failed" and a description string.
+
+    Security:
+        - Agent-side allowlist prevents arbitrary command execution.
+        - Target parameter is regex-validated against injection.
+    """
+    action = cmd.get("action")
+    target = cmd.get("target")
+
+    # Defense in depth: validate against agent-side allowlist
+    if action not in _ALLOWED_AGENT_ACTIONS:
+        msg = f"Rejected unpermitted command: {action}"
+        print(f"[Agent Security] {msg}")
+        return "failed", msg
+
+    # Validate target parameter if provided
+    if target is not None:
+        target = str(target).strip()
+        if not _SAFE_TARGET_REGEX.match(target):
+            msg = f"Rejected unsafe target parameter: {target}"
+            print(f"[Agent Security] {msg}")
+            return "failed", msg
+
     print(f"[Agent Action] Executing remediation: {action} (target={target})")
     try:
         if action == "restart_service" and target:
-            subprocess.run(["net", "stop", target], capture_output=True, text=True, timeout=15)
-            res = subprocess.run(["net", "start", target], capture_output=True, text=True, timeout=15)
-            print(f"[Agent Action] Service '{target}' restart output: {res.stdout.strip()}")
+            subprocess.run(["net", "stop", target], capture_output=True, text=True, timeout=15, check=False)
+            res = subprocess.run(["net", "start", target], capture_output=True, text=True, timeout=15, check=False)
+            output = f"Service '{target}' restart: {res.stdout.strip()}"
+            print(f"[Agent Action] {output}")
+            return "success", output
+
         elif action == "kill_process" and target:
             import psutil
-            killed = sum(1 for p in psutil.process_iter(['pid', 'name'])
-                         if p.info['name'] and target.lower() in p.info['name'].lower()
-                         and (p.kill() or True))
-            print(f"[Agent Action] Terminated {killed} instances of process '{target}'")
+            killed = 0
+            for p in psutil.process_iter(['pid', 'name']):
+                try:
+                    if p.info['name'] and target.lower() in p.info['name'].lower():
+                        p.kill()
+                        killed += 1
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            output = f"Terminated {killed} instances of '{target}'"
+            print(f"[Agent Action] {output}")
+            return "success", output
+
         elif action == "cleanup_temp":
             temp_dir = os.environ.get("TEMP", r"C:\Windows\Temp")
             cleared = 0
@@ -58,9 +100,16 @@ def execute_remediation_command(cmd: dict):
                         cleared += 1
                     except Exception:
                         pass
-            print(f"[Agent Action] Cleaned up {cleared} temp files in {temp_dir}")
+            output = f"Cleaned up {cleared} temp files in {temp_dir}"
+            print(f"[Agent Action] {output}")
+            return "success", output
+
+        return "failed", f"Unhandled action: {action}"
+
     except Exception as e:
-        print(f"[Agent Action] Failed to execute {action}: {e}")
+        msg = f"Failed to execute {action}: {e}"
+        print(f"[Agent Action] {msg}")
+        return "failed", msg
 
 
 async def run_agent():
@@ -71,8 +120,6 @@ async def run_agent():
         agent_settings.server.url = args.server
     if args.interval:
         agent_settings.agent.metrics_interval = args.interval
-    if args.key:
-        agent_settings.device.credential = args.key
     if args.name:
         agent_settings.device.name = args.name
 
@@ -90,8 +137,10 @@ async def run_agent():
                 print("[Agent] Cannot start without enrollment. Exiting.")
                 sys.exit(1)
         else:
-            # Non-interactive mode (e.g., running as service) — try legacy registration
-            print("[Agent] Running in non-interactive mode. Attempting legacy registration...")
+            # Non-interactive mode — cannot proceed without enrollment
+            print("[Agent] Not enrolled and running non-interactively. Exiting.")
+            print("[Agent] Enroll first: python -m agent.agent --server <URL> --enroll <CODE>")
+            sys.exit(1)
 
     device_name = agent_settings.device.resolved_name
     print(f"\n{'=' * 60}")
@@ -99,7 +148,7 @@ async def run_agent():
     print(f"  Device:  {device_name}")
     print(f"  Server:  {agent_settings.server.url}")
     print(f"  Stream:  every {agent_settings.agent.metrics_interval}s")
-    print(f"  Enrolled: {'Yes' if agent_settings.is_enrolled else 'No (legacy mode)'}")
+    print(f"  Device ID: {agent_settings.device.device_id}")
     print(f"{'=' * 60}\n")
 
     print("[Agent] Initializing system monitor...")
@@ -107,28 +156,9 @@ async def run_agent():
     await asyncio.sleep(2.0)
 
     sender = AgentSender()
+    sender.device_id = agent_settings.device.device_id
     heartbeat = HeartbeatManager(sender)
-
-    # Register with exponential backoff (legacy or post-enrollment)
-    if not agent_settings.is_enrolled:
-        # Legacy registration flow
-        backoff = 2.0
-        while True:
-            try:
-                await sender.register(
-                    hostname=device_name,
-                    os_name=platform.system(),
-                    os_version=platform.version(),
-                )
-                break
-            except Exception as e:
-                print(f"[Agent] Registration failed ({e}). Retrying in {backoff:.0f}s...")
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, agent_settings.network.max_reconnect_backoff)
-    else:
-        # Enrolled — device_id already set from config
-        sender.device_id = agent_settings.device.device_id
-        print(f"[Agent] Using enrolled identity: device_id={sender.device_id}")
+    print(f"[Agent] Using enrolled identity: device_id={sender.device_id}")
 
     # Upload initial data
     for label, fn in [
@@ -139,7 +169,13 @@ async def run_agent():
         try:
             await fn()
         except Exception as e:
-            print(f"[Agent] Failed to upload {label}: {e}")
+            if "403" in str(e):
+                print(f"[Agent] [WARNING] Server rejected credentials for device_id={sender.device_id} (403 Forbidden).")
+                print(f"[Agent] [INFO] The device is not recognized by the server. Re-enroll this machine with:")
+                print(f"[Agent]    .\\ObserveXAgent.exe --enroll <CODE>")
+                print(f"[Agent]    or: python -m agent.agent --enroll <CODE>")
+            else:
+                print(f"[Agent] Failed to upload {label}: {e}")
 
     print("[Agent] Starting metric stream...")
     event_refresh_interval = 300.0
@@ -150,6 +186,14 @@ async def run_agent():
     while True:
         if not sender.is_ws_connected:
             if not await sender.connect_ws():
+                if getattr(sender, "auth_rejected", False):
+                    print(f"\n[Agent] [ERROR] Server rejected device authentication (device_id={sender.device_id}).")
+                    print(f"[Agent] [INFO] The device credentials are invalid or this device is not registered in the server database.")
+                    print(f"[Agent] [INFO] Please re-enroll this device with an enrollment code from the ObserveX dashboard:")
+                    print(f"[Agent]    .\\ObserveXAgent.exe --enroll <ENROLLMENT_CODE>")
+                    print(f"[Agent]    or: python -m agent.agent --enroll <ENROLLMENT_CODE>\n")
+                    sys.exit(1)
+
                 print(f"[Agent] WebSocket reconnect in {reconnect_backoff:.0f}s...")
                 await asyncio.sleep(reconnect_backoff)
                 reconnect_backoff = min(
@@ -159,12 +203,13 @@ async def run_agent():
                 continue
             reconnect_backoff = 1.0
 
+        # Process incoming commands
         for cmd in await sender.check_incoming_commands():
-            if cmd.get("action") == "set_interval":
-                agent_settings.agent.metrics_interval = max(0.1, min(60.0, float(cmd.get("value", 1.0))))
-                print(f"[Agent] Stream interval updated to {agent_settings.agent.metrics_interval:.1f}s by server")
-            else:
-                execute_remediation_command(cmd)
+            cmd_id = cmd.get("command_id")
+            status, output = execute_remediation_command(cmd)
+            # Report result back to server
+            if cmd_id:
+                await sender.send_command_result(cmd_id, status, output)
 
         metrics = monitor.get_live_metrics()
         process_tick += 1
@@ -177,6 +222,9 @@ async def run_agent():
 
         if not await sender.send_metrics(metrics):
             continue
+
+        # WebSocket-level heartbeat
+        await sender.send_ws_heartbeat()
 
         # Application-level heartbeat
         await heartbeat.tick()

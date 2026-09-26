@@ -83,6 +83,16 @@ def build_agent(onefile: bool = False, clean: bool = False):
     for hi in hidden_imports:
         cmd.extend(["--hidden-import", hi])
 
+    # Exclude unused heavy packages (ML, scientific, notebook)
+    excludes = [
+        "torch", "torchvision", "transformers", "tensorflow", "tensorboard",
+        "matplotlib", "scipy", "pandas", "IPython", "notebook", "jupyter",
+        "streamlit", "cv2", "PIL", "tkinter", "pyarrow", "safetensors",
+        "scikit-learn", "sympy", "onnxruntime", "seaborn",
+    ]
+    for exc in excludes:
+        cmd.extend(["--exclude-module", exc])
+
     # Add data files
     sep = ";" if sys.platform == "win32" else ":"
     cmd.extend(["--add-data", f"{monitor_path}{sep}."])
@@ -106,15 +116,15 @@ def build_agent(onefile: bool = False, clean: bool = False):
 
     result = subprocess.run(cmd, cwd=project_root)
     if result.returncode != 0:
-        print(f"[Build] ❌ Build failed with exit code {result.returncode}")
+        print(f"[Build] [FAILED] Build failed with exit code {result.returncode}")
         sys.exit(1)
 
     output_dir = dist_dir
     if onefile:
         exe_name = "ObserveXAgent.exe" if sys.platform == "win32" else "ObserveXAgent"
-        print(f"\n[Build] ✅ Single-file executable: {os.path.join(output_dir, exe_name)}")
+        print(f"\n[Build] [OK] Single-file executable: {os.path.join(output_dir, exe_name)}")
     else:
-        print(f"\n[Build] ✅ Output directory: {os.path.join(output_dir, 'ObserveXAgent')}")
+        print(f"\n[Build] [OK] Output directory: {os.path.join(output_dir, 'ObserveXAgent')}")
 
     print(f"[Build] Platform: {get_platform_name()}")
 

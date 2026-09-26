@@ -11,6 +11,7 @@ After enrollment, device identity is persisted back to the YAML file.
 import os
 import platform
 import copy
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -19,13 +20,44 @@ from pydantic import BaseModel, Field, field_validator
 
 
 # ── Config file resolution ─────────────────────────────────────────────────
-# Priority: OBSERVEX_CONFIG_PATH env → ProgramData → local agent/config.yaml
+# Priority: OBSERVEX_CONFIG_PATH env → exe dir (if frozen) → cwd → ProgramData → local agent/config.yaml
 
-def _resolve_config_path() -> Path:
-    """Find the config file, checking env var, system-wide, and local paths."""
+def _resolve_config_path(for_writing: bool = False) -> Path:
+    """Find the config file, checking env var, executable dir, cwd, system-wide, and local paths."""
     env_path = os.environ.get("OBSERVEX_CONFIG_PATH")
     if env_path:
         return Path(env_path)
+
+    # If running as a frozen PyInstaller executable
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        exe_config = exe_dir / "config.yaml"
+        if for_writing:
+            if os.name == "nt":
+                prog_data = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "ObserveX" / "config.yaml"
+                if prog_data.exists():
+                    return prog_data
+            return exe_config
+
+        if exe_config.exists():
+            return exe_config
+        if os.name == "nt":
+            prog_data = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "ObserveX" / "config.yaml"
+            if prog_data.exists():
+                return prog_data
+        cwd_config = Path.cwd() / "config.yaml"
+        if cwd_config.exists():
+            return cwd_config
+        bundled = Path(__file__).resolve().parent / "config.yaml"
+        if bundled.exists():
+            return bundled
+        return exe_config
+
+    # Non-frozen (running from source):
+    # Check current working directory first if config.yaml exists here
+    cwd_config = Path.cwd() / "config.yaml"
+    if cwd_config.exists():
+        return cwd_config
 
     # System-wide location (Windows: ProgramData, Linux/Mac: /etc)
     if os.name == "nt":
@@ -61,7 +93,7 @@ class DeviceConfig(BaseModel):
     device_id: Optional[int] = None
     device_uuid: Optional[str] = None
     credential: Optional[str] = None
-    name: str = ""
+    name: Optional[str] = None
 
     @property
     def resolved_name(self) -> str:
@@ -171,7 +203,7 @@ def load_config(config_path: Optional[Path] = None) -> ObserveXAgentSettings:
 
 def save_config(settings: ObserveXAgentSettings, config_path: Optional[Path] = None) -> Path:
     """Persist current configuration to YAML file (used after enrollment)."""
-    path = config_path or _resolve_config_path()
+    path = config_path or _resolve_config_path(for_writing=True)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     # Build a clean dict, preserving only meaningful values

@@ -4,6 +4,8 @@ ObserveX Agent — Device Enrollment.
 Handles first-time enrollment of the agent with the central server.
 After successful enrollment, device identity and credentials are
 persisted to the config file so the agent can reconnect automatically.
+
+Uses the new /api/v1/enrollment/enroll endpoint.
 """
 import platform
 from agent.config import agent_settings, save_config, load_config, _resolve_config_path
@@ -49,8 +51,18 @@ async def enroll_device(server_url: str, enrollment_code: str, device_name: str 
     if device_name:
         agent_settings.device.name = device_name
 
+    # Store the WebSocket URL from the server response
+    ws_url = result.get("server_ws_url")
+    if ws_url:
+        # Extract the base WS URL (without the device-specific path)
+        # e.g., ws://host:port/ws/v1/agent/1 → ws://host:port
+        parts = ws_url.split("/ws/")
+        if parts:
+            agent_settings.server.websocket_url = parts[0]
+
     config_path = save_config(agent_settings)
-    print(f"[Enrollment] ✅ Device enrolled successfully!")
+    print(f"[Enrollment] [OK] Device enrolled successfully!")
+    print(f"[Enrollment]    Organization: {result.get('organization_name', 'Unknown')}")
     print(f"[Enrollment]    Device ID:   {result['device_id']}")
     print(f"[Enrollment]    Device UUID: {result['device_uuid']}")
     print(f"[Enrollment]    Config saved to: {config_path}")
@@ -65,20 +77,18 @@ async def interactive_enrollment() -> bool:
     Returns True if enrollment succeeded, False otherwise.
     """
     print("\n" + "=" * 60)
-    print("  ObserveX Agent — First-Time Enrollment")
+    print("  ObserveX Agent -- First-Time Enrollment")
     print("=" * 60)
     print("\nThis agent is not yet enrolled with an ObserveX server.")
     print("You will need a Server URL and an Enrollment Code from your administrator.\n")
 
     try:
-        server_url = input("  Server URL (e.g. https://observex.example.com): ").strip()
-        if not server_url:
-            print("[Enrollment] ❌ Server URL is required.")
-            return False
+        default_url = agent_settings.server.url or "http://localhost:8000"
+        server_url = input(f"  Server URL [{default_url}]: ").strip() or default_url
 
         enrollment_code = input("  Enrollment Code (e.g. OX-7F29-A82D): ").strip()
         if not enrollment_code:
-            print("[Enrollment] ❌ Enrollment code is required.")
+            print("[Enrollment] [ERROR] Enrollment code is required.")
             return False
 
         device_name = input(f"  Device Name [{platform.node()}]: ").strip() or None
@@ -90,6 +100,6 @@ async def interactive_enrollment() -> bool:
         print("\n[Enrollment] Cancelled by user.")
         return False
     except Exception as e:
-        print(f"\n[Enrollment] ❌ Enrollment failed: {e}")
+        print(f"\n[Enrollment] [ERROR] Enrollment failed: {e}")
         print("[Enrollment] Check the server URL and enrollment code, then try again.")
         return False

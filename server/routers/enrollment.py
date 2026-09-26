@@ -1,37 +1,33 @@
 """
-ObserveX Server — Enrollment Code Management.
+Enrollment Router
+=================
 
-Admin-only endpoints for generating, listing, and revoking
-enrollment codes that agents use for first-time registration.
+Admin-only endpoints for generating, listing, and revoking enrollment codes.
+Agent-facing endpoint for enrolling a device with a valid code.
 """
 import datetime
-import secrets
-import uuid
-
-import bcrypt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.database import get_db
-from server.models import EnrollmentCode, Device, User
-from server.schemas import (
+from server.models import User, EnrollmentCode
+from server.schemas.enrollment import (
     EnrollmentCodeCreateRequest, EnrollmentCodeOut,
     EnrollmentRequest, EnrollmentResponse,
 )
 from server.authorization import require_admin
+from server.security import log_audit, ACTIONS, enrollment_limiter
+from server.services.enrollment_service import (
+    generate_enrollment_code, validate_enrollment_code,
+    create_device_from_enrollment, get_org_name,
+)
+from server.logging import get_logger
+
+logger = get_logger("enrollment")
 
 router = APIRouter(prefix="/api/v1/enrollment", tags=["enrollment"])
 
-
-def _generate_code() -> str:
-    """Generate a human-friendly enrollment code like OX-7F29-A82D."""
-    part1 = secrets.token_hex(2).upper()
-    part2 = secrets.token_hex(2).upper()
-    return f"OX-{part1}-{part2}"
-
-
-# ── Admin endpoints ──
 
 @router.post("/codes", response_model=EnrollmentCodeOut, status_code=status.HTTP_201_CREATED)
 async def create_enrollment_code(
@@ -39,13 +35,13 @@ async def create_enrollment_code(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    """Generate a new enrollment code (admin only)."""
-    code = _generate_code()
+    """Generate a new enrollment code (admin only). Scoped to admin's organization."""
+    code = generate_enrollment_code()
     expires_at = datetime.datetime.utcnow() + datetime.timedelta(hours=req.expires_in_hours)
 
     enrollment_code = EnrollmentCode(
         code=code,
-        organization_id=req.organization_id or admin_user.organization_id,
+        organization_id=admin_user.organization_id,
         created_by_user_id=admin_user.id,
         expires_at=expires_at,
         max_uses=req.max_uses,
@@ -53,6 +49,16 @@ async def create_enrollment_code(
     db.add(enrollment_code)
     await db.commit()
     await db.refresh(enrollment_code)
+
+    logger.info("Enrollment code created: id=%s code=%s org=%s by admin=%s",
+                enrollment_code.id, code, admin_user.organization_id, admin_user.id)
+    await log_audit(
+        ACTIONS["ENROLLMENT_CODE_CREATED"],
+        actor_type="user", actor_id=str(admin_user.id),
+        organization_id=admin_user.organization_id,
+        target_type="enrollment_code", target_id=str(enrollment_code.id),
+        detail=f"code={code} expires={expires_at.isoformat()} max_uses={req.max_uses}",
+    )
     return enrollment_code
 
 
@@ -61,10 +67,13 @@ async def list_enrollment_codes(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    """List all enrollment codes (admin only)."""
-    result = await db.execute(
-        select(EnrollmentCode).order_by(EnrollmentCode.created_at.desc())
+    """List enrollment codes — scoped to admin's organization."""
+    stmt = (
+        select(EnrollmentCode)
+        .where(EnrollmentCode.organization_id == admin_user.organization_id)
+        .order_by(EnrollmentCode.created_at.desc())
     )
+    result = await db.execute(stmt)
     return result.scalars().all()
 
 
@@ -74,77 +83,75 @@ async def revoke_enrollment_code(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    """Revoke an enrollment code (admin only)."""
+    """Revoke an enrollment code (admin only). Must belong to admin's org."""
     code_obj = await db.get(EnrollmentCode, code_id)
-    if not code_obj:
+    if not code_obj or code_obj.organization_id != admin_user.organization_id:
         raise HTTPException(status_code=404, detail="Enrollment code not found")
+
     code_obj.is_revoked = True
     await db.commit()
+
+    logger.info("Enrollment code revoked: id=%s by admin=%s", code_id, admin_user.id)
+    await log_audit(
+        ACTIONS["ENROLLMENT_CODE_REVOKED"],
+        actor_type="user", actor_id=str(admin_user.id),
+        organization_id=admin_user.organization_id,
+        target_type="enrollment_code", target_id=str(code_id),
+    )
     return {"status": "revoked", "code_id": code_id}
 
 
-# ── Agent enrollment endpoint ──
-
-@router.post("/enroll", response_model=EnrollmentResponse)
+@router.post("/enroll", response_model=EnrollmentResponse, dependencies=[Depends(enrollment_limiter)])
 async def enroll_agent(
     req: EnrollmentRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Agent enrollment endpoint. Validates an enrollment code,
-    creates a device record, and returns credentials.
+    Agent enrollment endpoint. Validates an enrollment code, creates
+    a device record, and returns credentials.
 
-    This is also mounted at /api/v1/agent/enroll for convenience.
+    SECURITY:
+      - Rate limited to prevent brute force
+      - API key is returned ONCE and stored only as bcrypt hash
+      - Enrollment code must be valid, not expired, not revoked
     """
-    # Find the enrollment code
-    result = await db.execute(
-        select(EnrollmentCode).where(EnrollmentCode.code == req.enrollment_code)
+    code_obj, error = await validate_enrollment_code(req.enrollment_code, db)
+
+    if error:
+        logger.warning("Enrollment failed: %s code=%s", error, req.enrollment_code)
+        await log_audit(
+            ACTIONS["ENROLLMENT_FAILED"],
+            actor_type="agent",
+            detail=f"{error}: {req.enrollment_code}",
+            result="denied",
+        )
+        status_code = 404 if "Invalid" in error else 410
+        raise HTTPException(status_code=status_code, detail=error)
+
+    device, raw_api_key = await create_device_from_enrollment(
+        code_obj, req.hostname, req.os_name, req.os_version, db,
     )
-    code_obj = result.scalar_one_or_none()
 
-    if not code_obj:
-        raise HTTPException(status_code=404, detail="Invalid enrollment code")
+    org_name = await get_org_name(code_obj.organization_id, db)
 
-    if code_obj.is_revoked:
-        raise HTTPException(status_code=410, detail="Enrollment code has been revoked")
-
-    if code_obj.expires_at < datetime.datetime.utcnow():
-        raise HTTPException(status_code=410, detail="Enrollment code has expired")
-
-    if code_obj.max_uses > 0 and code_obj.usage_count >= code_obj.max_uses:
-        raise HTTPException(status_code=410, detail="Enrollment code has reached maximum uses")
-
-    # Generate device credentials
-    device_uuid = str(uuid.uuid4())
-    raw_api_key = secrets.token_urlsafe(32)
-    api_key_hash = bcrypt.hashpw(raw_api_key.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-    # Create the device
-    device = Device(
-        device_uuid=device_uuid,
-        hostname=req.hostname,
-        os_name=req.os_name,
-        os_version=req.os_version,
-        api_key_hash=api_key_hash,
-        api_key=raw_api_key,  # Legacy column — will be removed after migration
-        status="active",
+    await log_audit(
+        ACTIONS["DEVICE_ENROLLED"],
+        actor_type="agent", actor_id=str(device.id),
         organization_id=code_obj.organization_id,
-        registered_at=datetime.datetime.utcnow(),
-        last_seen=datetime.datetime.utcnow(),
-        is_online=False,
+        target_type="device", target_id=str(device.id),
+        detail=f"hostname={req.hostname} code={req.enrollment_code}",
     )
-    db.add(device)
 
-    # Update enrollment code usage
-    code_obj.usage_count += 1
-    await db.commit()
-    await db.refresh(device)
-
-    print(f"[Enrollment] Device enrolled: id={device.id}, uuid={device_uuid}, hostname={req.hostname}")
+    server_url = str(request.base_url).rstrip("/")
+    ws_scheme = "wss" if request.url.scheme == "https" else "ws"
+    ws_url = f"{ws_scheme}://{request.url.netloc}/ws/v1/agent/{device.id}"
 
     return EnrollmentResponse(
         device_id=device.id,
-        device_uuid=device_uuid,
+        device_uuid=device.device_uuid,
         api_key=raw_api_key,
+        organization_name=org_name,
+        server_ws_url=ws_url,
         status="enrolled",
     )

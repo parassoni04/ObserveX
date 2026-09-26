@@ -1,48 +1,17 @@
-# ─────────────────────────────────────────────────
-# ObserveX Agent Configuration
-# ─────────────────────────────────────────────────
-# This file is the primary configuration for the
-# ObserveX monitoring agent. Values here can be
-# overridden by environment variables prefixed with
-# OBSERVEX_ (e.g. OBSERVEX_SERVER_URL).
-#
-# After enrollment, device identity fields are
-# populated automatically. Do not edit them manually.
-# ─────────────────────────────────────────────────
-
 server:
-  # URL of the ObserveX central server (HTTP/HTTPS)
-  url: "http://localhost:8000"
-  # WebSocket URL — auto-derived from server.url if omitted
-  websocket_url: null
-
+  url: http://localhost:8000
 device:
-  # Populated after successful enrollment — do NOT edit manually
   device_id: null
   device_uuid: null
-  # API credential received from enrollment (secret)
   credential: null
-  # Human-readable name; defaults to system hostname if empty
-  name: ""
-
+  name: null
 agent:
-  # Interval (seconds) between metric transmissions
   metrics_interval: 1.0
-  # Interval (seconds) between heartbeat pings
   heartbeat_interval: 10.0
-  # Agent version identifier
-  version: "2.1.0"
-
+  version: 2.1.0
 logging:
-  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
-  level: "INFO"
-  # Log file path (null = stdout only)
-  file: null
-
+  level: INFO
 network:
-  # Verify TLS certificates (disable only for development)
   verify_ssl: true
-  # Connection timeout in seconds
   connect_timeout: 10.0
-  # Maximum reconnect backoff in seconds
   max_reconnect_backoff: 30.0
