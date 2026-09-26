@@ -1,84 +1,147 @@
+"""
+Agent Router
+============
+
+Agent-facing HTTP endpoints for heartbeat, static info, software,
+and event log uploads. All endpoints authenticate via Bearer token
+(bcrypt hash verification against device's api_key_hash).
+
+The legacy plaintext api_key fallback has been removed.
+"""
 import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.database import get_db
-from server.models import Device, DeviceStaticInfo, DeviceSoftware
-from server.schemas import DeviceRegisterRequest, DeviceRegisterResponse, HeartbeatRequest, HeartbeatResponse, StaticInfoPayload, SoftwarePayload, EventLogPayload
+from server.models import Device, DeviceStaticInfo, DeviceSoftware, WindowsEvent
+from server.schemas.telemetry import (
+    HeartbeatRequest, HeartbeatResponse,
+    StaticInfoPayload, SoftwarePayload, EventLogPayload,
+)
+from server.auth.device_auth import verify_device_credential
+from server.security import log_audit, ACTIONS
+from server.logging import get_logger
+
+logger = get_logger("agents")
 
 router = APIRouter(prefix="/api/v1/agent", tags=["agent"])
 
 
-async def _auth_device(device_id: int, api_key: str, db: AsyncSession) -> Device:
-    device = await db.get(Device, device_id)
+async def _auth_agent(request: Request, device_id: int, db: AsyncSession) -> Device:
+    """
+    Authenticate an agent via Bearer token.
+
+    CRITICAL: After authentication, verifies the device_id matches
+    the authenticated device to prevent cross-device impersonation.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Agent authentication required (Bearer token)")
+
+    token = auth_header[7:]
+    device = await verify_device_credential(device_id, token, db)
     if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
-    if device.api_key != api_key:
-        raise HTTPException(status_code=403, detail="Invalid API key")
+        raise HTTPException(status_code=403, detail="Invalid agent credential")
+
     return device
 
 
-@router.post("/register", response_model=DeviceRegisterResponse)
-async def register_device(req: DeviceRegisterRequest, db: AsyncSession = Depends(get_db)):
-    existing = (await db.execute(select(Device).where(Device.hostname == req.hostname))).scalar_one_or_none()
-    if existing:
-        if existing.api_key != req.api_key:
-            raise HTTPException(status_code=403, detail="API key mismatch for existing device")
-        existing.last_seen = datetime.datetime.utcnow()
-        existing.is_online = True
-        existing.os_name = req.os_name or existing.os_name
-        existing.os_version = req.os_version or existing.os_version
-        await db.commit()
-        await db.refresh(existing)
-        return DeviceRegisterResponse(device_id=existing.id, hostname=existing.hostname, status="re-registered")
-
-    device = Device(hostname=req.hostname, os_name=req.os_name, os_version=req.os_version, api_key=req.api_key,
-                    registered_at=datetime.datetime.utcnow(), last_seen=datetime.datetime.utcnow(), is_online=True)
-    db.add(device)
-    await db.commit()
-    await db.refresh(device)
-    return DeviceRegisterResponse(device_id=device.id, hostname=device.hostname, status="registered")
-
-
 @router.post("/heartbeat", response_model=HeartbeatResponse)
-async def agent_heartbeat(req: HeartbeatRequest, db: AsyncSession = Depends(get_db)):
-    device = await _auth_device(req.device_id, req.api_key, db)
+async def agent_heartbeat(
+    req: HeartbeatRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Agent heartbeat — updates last_seen and status.
+    Verifies the authenticated device matches req.device_id.
+    """
+    device = await _auth_agent(request, req.device_id, db)
+
+    if device.id != req.device_id:
+        logger.warning("Heartbeat device_id mismatch: auth=%s req=%s", device.id, req.device_id)
+        raise HTTPException(status_code=403, detail="Device ID mismatch")
+
     device.last_seen = datetime.datetime.utcnow()
     device.is_online = True
+    if device.status in ("pending", "offline", "stale"):
+        device.status = "active"
     await db.commit()
     return HeartbeatResponse(status="ok")
 
 
 @router.post("/static-info")
-async def upload_static_info(device_id: int, api_key: str, payload: StaticInfoPayload, db: AsyncSession = Depends(get_db)):
-    await _auth_device(device_id, api_key, db)
-    info = (await db.execute(select(DeviceStaticInfo).where(DeviceStaticInfo.device_id == device_id))).scalar_one_or_none()
-    valid_cols = {c.name for c in DeviceStaticInfo.__table__.columns if c.name not in ("id", "device_id", "updated_at")}
+async def upload_static_info(
+    device_id: int,
+    payload: StaticInfoPayload,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload device static hardware/OS info."""
+    device = await _auth_agent(request, device_id, db)
+    if device.id != device_id:
+        raise HTTPException(status_code=403, detail="Device ID mismatch")
+
+    info = (await db.execute(
+        select(DeviceStaticInfo).where(DeviceStaticInfo.device_id == device_id)
+    )).scalar_one_or_none()
+
+    valid_cols = {c.name for c in DeviceStaticInfo.__table__.columns if c.name not in ("id", "device_id", "organization_id", "updated_at")}
     data = {k: v for k, v in payload.model_dump(exclude_none=True).items() if k in valid_cols}
+
     if info:
         for k, v in data.items():
             setattr(info, k, v)
         info.updated_at = datetime.datetime.utcnow()
     else:
-        db.add(DeviceStaticInfo(device_id=device_id, **data))
+        db.add(DeviceStaticInfo(
+            device_id=device_id,
+            organization_id=device.organization_id,
+            **data,
+        ))
     await db.commit()
     return {"status": "ok", "device_id": device_id}
 
 
 @router.post("/software")
-async def upload_software(device_id: int, api_key: str, payload: SoftwarePayload, db: AsyncSession = Depends(get_db)):
-    await _auth_device(device_id, api_key, db)
+async def upload_software(
+    device_id: int,
+    payload: SoftwarePayload,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload installed software list (atomic replace)."""
+    device = await _auth_agent(request, device_id, db)
+    if device.id != device_id:
+        raise HTTPException(status_code=403, detail="Device ID mismatch")
+
     await db.execute(delete(DeviceSoftware).where(DeviceSoftware.device_id == device_id))
     for item in payload.software:
-        db.add(DeviceSoftware(device_id=device_id, name=item.name, version=item.version, publisher=item.publisher, install_date=item.install_date))
+        db.add(DeviceSoftware(
+            device_id=device_id,
+            organization_id=device.organization_id,
+            name=item.name, version=item.version,
+            publisher=item.publisher, install_date=item.install_date,
+        ))
     await db.commit()
     return {"status": "ok", "device_id": device_id, "count": len(payload.software)}
 
 
 @router.post("/events")
-async def upload_events(device_id: int, api_key: str, payload: EventLogPayload, db: AsyncSession = Depends(get_db)):
-    await _auth_device(device_id, api_key, db)
-    from server.websockets.hub import connection_manager
+async def upload_events(
+    device_id: int,
+    payload: EventLogPayload,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload Windows event logs — stored in-memory and optionally in DB."""
+    device = await _auth_agent(request, device_id, db)
+    if device.id != device_id:
+        raise HTTPException(status_code=403, detail="Device ID mismatch")
+
+    from server.websockets.manager import connection_manager
     connection_manager.device_events[device_id] = [e.model_dump() for e in payload.events]
+
     return {"status": "ok", "device_id": device_id, "count": len(payload.events)}

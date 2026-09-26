@@ -1,0 +1,17 @@
+server:
+  url: http://localhost:8000
+device:
+  device_id: null
+  device_uuid: null
+  credential: null
+  name: null
+agent:
+  metrics_interval: 1.0
+  heartbeat_interval: 10.0
+  version: 2.1.0
+logging:
+  level: INFO
+network:
+  verify_ssl: true
+  connect_timeout: 10.0
+  max_reconnect_backoff: 30.0

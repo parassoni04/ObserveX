@@ -1,3 +1,5 @@
+# ── ObserveX Server ──
+
 # Core
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
@@ -21,6 +23,12 @@ pyjwt>=2.8.0
 bcrypt>=4.1.0
 python-multipart>=0.0.9
 
-# System monitoring (agent / standalone)
+# Configuration
+pyyaml>=6.0
+
+# Database migrations
+alembic>=1.13.0
+
+# System monitoring (agent)
 psutil>=5.9.0
 pywin32>=306

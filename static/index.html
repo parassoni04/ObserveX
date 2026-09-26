@@ -1,1369 +1,211 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
-
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ObserveX - System Monitor</title>
-    <!-- Google Fonts -->
+    <meta name="description" content="ObserveX — Enterprise Device Monitoring, Observability & AIOps Platform">
+    <title>ObserveX — Enterprise Device Monitoring</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap"
-        rel="stylesheet">
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/design-system.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+    <link rel="stylesheet" href="/static/css/pages.css">
 </head>
-
 <body>
-    <div class="app-container">
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="screen active">
+        <div class="auth-container">
+            <div class="auth-brand">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="24" cy="24" r="22" stroke="url(#brandGrad)" stroke-width="2.5" fill="none"/>
+                        <circle cx="24" cy="24" r="8" fill="url(#brandGrad)" opacity="0.8"/>
+                        <circle cx="24" cy="10" r="3" fill="url(#brandGrad)"/>
+                        <circle cx="36" cy="30" r="3" fill="url(#brandGrad)"/>
+                        <circle cx="12" cy="30" r="3" fill="url(#brandGrad)"/>
+                        <line x1="24" y1="16" x2="24" y2="13" stroke="url(#brandGrad)" stroke-width="1.5"/>
+                        <line x1="31" y1="27" x2="34" y2="29" stroke="url(#brandGrad)" stroke-width="1.5"/>
+                        <line x1="17" y1="27" x2="14" y2="29" stroke="url(#brandGrad)" stroke-width="1.5"/>
+                        <defs>
+                            <linearGradient id="brandGrad" x1="0" y1="0" x2="48" y2="48">
+                                <stop offset="0%" stop-color="#6366f1"/>
+                                <stop offset="100%" stop-color="#8b5cf6"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <h1 class="brand-name">Observe<span class="brand-accent">X</span></h1>
+                <p class="brand-tagline">Enterprise Device Monitoring & AIOps</p>
+            </div>
+
+            <!-- Login Form -->
+            <div id="login-form" class="auth-card">
+                <h2 class="auth-title">Sign In</h2>
+                <form id="login-form-element" autocomplete="on">
+                    <div class="form-group">
+                        <label for="login-input">Username or Email</label>
+                        <input type="text" id="login-input" placeholder="admin@company.com" autocomplete="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required>
+                    </div>
+                    <div id="login-error" class="form-error hidden"></div>
+                    <button type="submit" id="login-btn" class="btn btn-primary btn-full">
+                        <span class="btn-text">Sign In</span>
+                        <span class="btn-loader hidden"></span>
+                    </button>
+                </form>
+                <div class="auth-footer">
+                    <span>No organization yet?</span>
+                    <button id="show-create-env" class="btn-link">Create Environment</button>
+                </div>
+            </div>
+
+            <!-- Create Environment Form -->
+            <div id="create-env-form" class="auth-card hidden">
+                <h2 class="auth-title">Create Environment</h2>
+                <p class="auth-subtitle">Set up a new organization with an admin account</p>
+                <form id="create-env-form-element">
+                    <div id="create-env-fields">
+                        <div class="form-group">
+                            <label for="env-org-name">Organization Name</label>
+                            <input type="text" id="env-org-name" placeholder="Acme Corp" required autocomplete="organization">
+                        </div>
+                        <div class="form-group">
+                            <label for="env-username">Admin Username</label>
+                            <input type="text" id="env-username" placeholder="admin" required autocomplete="username">
+                        </div>
+                        <div class="form-group">
+                            <label for="env-email">Admin Email</label>
+                            <input type="email" id="env-email" placeholder="admin@acme.com" required autocomplete="email">
+                        </div>
+                        <div class="form-group">
+                            <label for="env-password">Admin Password</label>
+                            <input type="password" id="env-password" placeholder="••••••••" required minlength="8" autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label for="env-confirm-password">Confirm Admin Password</label>
+                            <input type="password" id="env-confirm-password" placeholder="••••••••" required minlength="8" autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label for="env-fullname">Full Name (optional)</label>
+                            <input type="text" id="env-fullname" placeholder="John Smith" autocomplete="name">
+                        </div>
+                    </div>
+
+                    <!-- Email OTP Verification Step -->
+                    <div id="email-verification-section" class="hidden" style="margin-bottom:var(--space-md);padding:var(--space-md);background:rgba(255,255,255,0.03);border:1px solid var(--border-primary);border-radius:var(--radius-md)">
+                        <div style="font-size:0.9rem;font-weight:600;margin-bottom:var(--space-xs);color:var(--text-primary)">
+                            Verify Email Address
+                        </div>
+                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:var(--space-sm)">
+                            A 6-digit verification code was sent to <strong id="verification-target-email" style="color:var(--accent-primary)"></strong>.
+                        </p>
+                        <div id="dev-code-banner" class="hidden" style="margin-bottom:var(--space-sm);padding:0.45rem 0.75rem;background:rgba(99,102,241,0.12);border:1px dashed rgba(99,102,241,0.4);border-radius:var(--radius-sm);font-size:0.8rem;color:#818cf8;cursor:pointer">
+                            <span>Dev Code: <strong id="dev-code-text"></strong> (click to auto-fill)</span>
+                        </div>
+                        <div class="form-group" style="margin-bottom:var(--space-sm)">
+                            <label for="env-otp-code">6-Digit Verification Code</label>
+                            <input type="text" id="env-otp-code" placeholder="123456" maxlength="6" style="text-align:center;font-size:1.25rem;letter-spacing:0.25em;font-weight:700">
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <button type="button" id="resend-otp-btn" class="btn btn-ghost btn-sm">Resend Code</button>
+                            <button type="button" id="change-details-btn" class="btn btn-ghost btn-sm">Edit Details</button>
+                        </div>
+                    </div>
+
+                    <div id="create-env-error" class="form-error hidden"></div>
+                    <button type="submit" id="create-env-btn" class="btn btn-primary btn-full">
+                        <span class="btn-text" id="create-env-btn-text">Verify Email & Create Environment</span>
+                        <span class="btn-loader hidden"></span>
+                    </button>
+                </form>
+                <div class="auth-footer">
+                    <span>Already have an account?</span>
+                    <button id="show-login" class="btn-link">Sign In</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="app-screen" class="screen hidden">
         <!-- Sidebar Navigation -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="logo-icon">
-                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
-                        <path d="M12 6v6l4 2" />
-                    </svg>
-                </div>
-                <div class="logo-text">
-                    <h1>Observe<span>X</span></h1>
-                </div>
+        <nav id="sidebar" class="sidebar">
+            <div class="sidebar-brand">
+                <span class="sidebar-logo">O<span class="brand-accent">X</span></span>
+                <span class="sidebar-name">ObserveX</span>
             </div>
-
-            <!-- Device Selector -->
-            <div class="device-selector-wrapper">
-                <label class="device-selector-label">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                        <line x1="8" y1="21" x2="16" y2="21"/>
-                        <line x1="12" y1="17" x2="12" y2="21"/>
-                    </svg>
-                    Device
-                </label>
-                <select id="device-selector" class="device-selector">
-                    <option value="local">Local Machine</option>
-                </select>
-                <div class="device-status-indicator" id="device-status-dot">
-                    <span class="status-dot online"></span>
-                    <span class="status-text" id="device-status-text">Online</span>
-                </div>
-            </div>
-
-            <nav class="nav-menu">
-                <a href="#" class="nav-link active" data-view="dashboard">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="7" height="9" />
-                        <rect x="14" y="3" width="7" height="5" />
-                        <rect x="14" y="12" width="7" height="9" />
-                        <rect x="3" y="16" width="7" height="5" />
-                    </svg>
-                    <span>Performance & Anomalies</span>
+            <div class="sidebar-nav">
+                <a href="#" class="nav-item active" data-page="dashboard" id="nav-dashboard">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                    <span>Dashboard</span>
                 </a>
-                <a href="#" class="nav-link" data-view="processes">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                    </svg>
-                    <span>Processes & Activity</span>
-                </a>
-                <a href="#" class="nav-link" data-view="hardware">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-                        <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                        <line x1="6" y1="6" x2="6.01" y2="6" />
-                        <line x1="6" y1="18" x2="6.01" y2="18" />
-                    </svg>
-                    <span>Hardware Spec</span>
-                </a>
-                <a href="#" class="nav-link" data-view="software">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                    </svg>
-                    <span>Software & Updates</span>
-                </a>
-                <a href="#" class="nav-link" data-view="events">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                        <line x1="16" y1="13" x2="8" y2="13" />
-                        <line x1="16" y1="17" x2="8" y2="17" />
-                        <polyline points="10 9 9 9 8 9" />
-                    </svg>
-                    <span>Windows Event Logs</span>
-                </a>
-                <a href="#" class="nav-link" data-view="automation">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                    </svg>
-                    <span>Automation Rules</span>
-                </a>
-                <a href="#" class="nav-link" data-view="aiops">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M12 8v4l3 3"/>
-                        <path d="M9 2.5h6"/>
-                    </svg>
-                    <span>AIOps & ML Insights</span>
-                </a>
-                <a href="#" class="nav-link" data-view="devices">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                        <line x1="8" y1="21" x2="16" y2="21"/>
-                        <line x1="12" y1="17" x2="12" y2="21"/>
-                    </svg>
+                <a href="#" class="nav-item" data-page="devices" id="nav-devices">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                     <span>Devices</span>
                 </a>
-                <a href="#" class="nav-link" data-view="admin" id="nav-link-admin" style="display: none;">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    </svg>
-                    <span>Admin Portal</span>
+                <a href="#" class="nav-item" data-page="alerts" id="nav-alerts">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    <span>Alerts</span>
                 </a>
-                <a href="#" class="nav-link" data-view="settings">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="3" />
-                        <path
-                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                    <span>Settings</span>
+                <a href="#" class="nav-item admin-only" data-page="users" id="nav-users">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span>Users</span>
                 </a>
-            </nav>
-
-            <!-- Health Quick Card -->
-            <div class="health-summary-panel">
-                <div class="health-circle-container">
-                    <svg viewBox="0 0 36 36" class="health-ring">
-                        <path class="ring-bg"
-                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path class="ring-fg" id="sidebar-health-ring" stroke-dasharray="100, 100"
-                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    </svg>
-                    <div class="health-percentage" id="sidebar-health-val">--%</div>
-                </div>
-                <div class="health-text-lbl">Device Health</div>
+                <a href="#" class="nav-item admin-only" data-page="enrollment" id="nav-enrollment">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                    <span>Enrollment</span>
+                </a>
+                <a href="#" class="nav-item admin-only" data-page="assignments" id="nav-assignments">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    <span>Assignments</span>
+                </a>
             </div>
-
-            <!-- User Profile Widget -->
-            <div class="user-profile-panel" id="user-profile-panel" style="display: none;">
-                <div class="user-avatar" id="user-avatar-initials">U</div>
-                <div class="user-info">
-                    <div class="user-name" id="user-display-name">User Name</div>
-                    <span class="user-role-badge" id="user-display-role">USER</span>
+            <div class="sidebar-footer">
+                <div class="user-info" id="user-info">
+                    <div class="user-avatar" id="user-avatar">A</div>
+                    <div class="user-details">
+                        <span class="user-name" id="user-display-name">Admin</span>
+                        <span class="user-role" id="user-display-role">admin</span>
+                    </div>
                 </div>
-                <button class="logout-btn" id="logout-btn" title="Log Out">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                        <polyline points="16 17 21 12 16 7"/>
-                        <line x1="21" y1="12" x2="9" y2="12"/>
-                    </svg>
+                <button id="logout-btn" class="btn btn-ghost btn-sm" title="Sign Out">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 </button>
             </div>
-        </aside>
+        </nav>
 
-        <!-- Main Window Container -->
-        <main class="main-content">
-            <!-- Header Bar -->
-            <header class="content-header">
-                <div class="header-title">
-                    <h2 id="view-title">Dashboard Overview</h2>
-                    <p id="view-subtitle" class="text-secondary">Real-time system load and execution health.</p>
+        <!-- Main Content Area -->
+        <main id="main-content" class="main-content">
+            <!-- Page header -->
+            <header id="page-header" class="page-header">
+                <div class="page-header-left">
+                    <h1 id="page-title" class="page-title">Dashboard</h1>
+                    <p id="page-subtitle" class="page-subtitle">Organization overview</p>
                 </div>
-
-                <div class="system-time-badge">
-                    <div class="time-item">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10" />
-                            <polyline points="12 6 12 12 16 14" />
-                        </svg>
-                        <span id="header-time">00:00:00</span>
-                    </div>
-                    <div class="divider"></div>
-                    <div class="uptime-item">
-                        <span class="lbl">Uptime:</span>
-                        <span id="header-uptime" class="val">--d --h --m</span>
-                    </div>
-                </div>
+                <div class="page-header-right" id="page-actions"></div>
             </header>
 
-            <!-- Notification Toast Container -->
-            <div id="toast-container"></div>
-
-            <!-- Dashboard View -->
-            <section id="view-dashboard" class="content-view active-view">
-                <!-- Live Infrastructure Overview (Image 2 style) -->
-                <div class="overview-bar glass-panel">
-                    <div class="overview-table-wrapper">
-                        <table class="overview-table">
-                            <thead>
-                                <tr>
-                                    <th>TIME (IST)</th>
-                                    <th>MACHINE NAME</th>
-                                    <th>CPU</th>
-                                    <th>MEMORY</th>
-                                    <th>DISK READ</th>
-                                    <th>DISK WRITE</th>
-                                    <th>NET SENT</th>
-                                    <th>NET RECV</th>
-                                    <th>STATUS</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td id="overview-time">--:--:-- --</td>
-                                    <td id="overview-machine" class="text-primary-glow">--</td>
-                                    <td id="overview-cpu">--%</td>
-                                    <td id="overview-mem">--%</td>
-                                    <td id="overview-disk-read">0.0 B</td>
-                                    <td id="overview-disk-write">0.0 B</td>
-                                    <td id="overview-net-sent">0.0 KB</td>
-                                    <td id="overview-net-recv">0.0 KB</td>
-                                    <td><span class="status-badge-up" id="overview-status">UP</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Status Cards Grid -->
-                <div class="metrics-grid">
-                    <!-- CPU Card -->
-                    <div class="metric-card glass-panel" id="cpu-card">
-                        <div class="card-head-redesign">
-                            <span class="card-title-tiny">CPU USAGE</span>
-                            <span class="badge-accent" id="cpu-freq">-- GHz</span>
-                        </div>
-                        <div class="card-body-redesign">
-                            <div class="value-row">
-                                <div class="value-display-redesign">
-                                    <span class="number" id="cpu-percent-val">0</span><span class="unit">%</span>
-                                </div>
-                                <div class="accent-block cpu-accent"></div>
-                            </div>
-                            <div class="card-subtitle" id="cpu-status-subtitle">Status: <span class="status-ok">Normal /
-                                    Healthy</span></div>
-                            <div class="card-footer-info-redesign">
-                                <span>Cores: <strong id="cpu-cores">8</strong></span>
-                                <span>Temp: <strong id="cpu-temp-val">--</strong></span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- RAM Card -->
-                    <div class="metric-card glass-panel" id="ram-card">
-                        <div class="card-head-redesign">
-                            <span class="card-title-tiny">MEMORY USAGE</span>
-                            <span class="badge-accent" id="ram-usage-desc">0 / 0 GB</span>
-                        </div>
-                        <div class="card-body-redesign">
-                            <div class="value-row">
-                                <div class="value-display-redesign">
-                                    <span class="number" id="ram-percent-val">0</span><span class="unit">%</span>
-                                </div>
-                                <div class="accent-block ram-accent"></div>
-                            </div>
-                            <div class="card-subtitle" id="ram-status-subtitle">Status: <span class="status-ok">Normal /
-                                    Healthy</span></div>
-                            <div class="card-footer-info-redesign">
-                                <span>Available: <strong id="ram-avail">0 GB</strong></span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- GPU Card -->
-                    <div class="metric-card glass-panel" id="gpu-card">
-                        <div class="card-head-redesign">
-                            <span class="card-title-tiny">GPU USAGE</span>
-                            <span class="badge-accent text-ellipsis" id="gpu-name" style="max-width: 130px;">N/A</span>
-                        </div>
-                        <div class="card-body-redesign">
-                            <div class="value-row">
-                                <div class="value-display-redesign">
-                                    <span class="number" id="gpu-percent-val">0</span><span class="unit">%</span>
-                                </div>
-                                <div class="accent-block gpu-accent"></div>
-                            </div>
-                            <div class="card-subtitle" id="gpu-status-subtitle">Status: <span class="status-ok">Normal /
-                                    Healthy</span></div>
-                            <div class="card-footer-info-redesign">
-                                <span>VRAM: <strong id="gpu-vram-val">0/0 MB</strong></span>
-                                <span>Temp: <strong id="gpu-temp-val">--</strong></span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Storage Card -->
-                    <div class="metric-card glass-panel" id="disk-card">
-                        <div class="card-head-redesign">
-                            <span class="card-title-tiny">DRIVE USAGE</span>
-                            <span class="badge-accent" id="disk-path">C:\</span>
-                        </div>
-                        <div class="card-body-redesign">
-                            <div class="value-row">
-                                <div class="value-display-redesign">
-                                    <span class="number" id="disk-percent-val">0</span><span class="unit">%</span>
-                                </div>
-                                <div class="accent-block disk-accent"></div>
-                            </div>
-                            <div class="card-subtitle" id="disk-status-subtitle">Status: <span class="status-ok">Normal
-                                    / Healthy</span></div>
-                            <div class="card-footer-info-redesign">
-                                <span>Free: <strong id="disk-free-val">0 GB</strong></span>
-                                <span>Used: <strong id="disk-used-val">0 GB</strong></span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Network Card -->
-                    <div class="metric-card glass-panel" id="network-card">
-                        <div class="card-head-redesign">
-                            <span class="card-title-tiny">NETWORK I/O</span>
-                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-                                stroke-width="2" class="text-secondary">
-                                <polyline points="16 16 12 12 8 16" />
-                                <polyline points="8 8 12 12 16 8" />
-                                <line x1="12" y1="12" x2="12" y2="21" />
-                                <line x1="12" y1="12" x2="12" y2="3" />
-                            </svg>
-                        </div>
-                        <div class="card-body-redesign">
-                            <div class="value-row">
-                                <div class="value-display-redesign">
-                                    <span class="number" id="net-io-speed-val">0.0</span><span class="unit"
-                                        id="net-io-unit-val"> KB/s</span>
-                                </div>
-                                <div class="accent-block net-accent"></div>
-                            </div>
-                            <div class="card-subtitle" id="net-status-subtitle">Status: <span class="status-ok">Normal /
-                                    Healthy</span></div>
-                            <div class="card-footer-info-redesign">
-                                <span>Sent: <strong id="net-total-sent">0 MB</strong></span>
-                                <span>Recv: <strong id="net-total-recv">0 MB</strong></span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Power & Battery Card -->
-                    <div class="metric-card glass-panel" id="power-battery-card">
-                        <div class="card-head-redesign">
-                            <span class="card-title-tiny">POWER & BATTERY</span>
-                            <div class="power-toggle-container">
-                                <span class="toggle-label-tiny">Details</span>
-                                <label class="switch-mini">
-                                    <input type="checkbox" id="power-detail-toggle">
-                                    <span class="slider-mini"></span>
-                                </label>
-                            </div>
-                            <span class="badge-accent" id="battery-status-badge">Discharging</span>
-                        </div>
-                        <div class="card-body-redesign">
-                            <div class="value-row">
-                                <div class="value-display-redesign">
-                                    <span class="number" id="battery-percent-val">0</span><span class="unit">%</span>
-                                </div>
-                                <div class="battery-cell-container">
-                                    <div class="battery-cell-shell">
-                                        <div class="battery-cell-level" id="battery-fill" style="width: 0%"></div>
-                                    </div>
-                                    <div class="battery-lightning" id="battery-lightning-icon" style="display: none;">
-                                        <svg viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M11 21h-1l1-7H5.5L14 3h1l-1 7h5.5L11 21z" />
-                                        </svg>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="card-footer-info-redesign watt-grid">
-                                <div class="watt-item-tiny">Total: <strong id="watt-total-val">0.0 W</strong></div>
-                                <div class="watt-item-tiny power-detail-item">CPU: <strong id="watt-cpu-val">0.0
-                                        W</strong></div>
-                                <div class="watt-item-tiny power-detail-item">GPU: <strong id="watt-gpu-val">0.0
-                                        W</strong></div>
-                                <div class="watt-item-tiny" id="watt-adapter-container-tiny">Charger: <strong
-                                        id="watt-charging-val">0.0 W</strong></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Charts Container Grid -->
-                <div class="charts-grid">
-                    <div class="chart-container glass-panel">
-                        <div class="chart-header">
-                            <h4>CPU Utilization</h4>
-                        </div>
-                        <div class="chart-body">
-                            <canvas id="cpuChart"></canvas>
-                        </div>
-                    </div>
-                    <div class="chart-container glass-panel">
-                        <div class="chart-header">
-                            <h4>Memory Utilization</h4>
-                        </div>
-                        <div class="chart-body">
-                            <canvas id="memChart"></canvas>
-                        </div>
-                    </div>
-                    <div class="chart-container glass-panel">
-                        <div class="chart-header">
-                            <h4>GPU Utilization</h4>
-                        </div>
-                        <div class="chart-body">
-                            <canvas id="gpuChart"></canvas>
-                        </div>
-                    </div>
-                    <div class="chart-container glass-panel">
-                        <div class="chart-header">
-                            <h4>Network Speed</h4>
-                        </div>
-                        <div class="chart-body">
-                            <canvas id="netChart"></canvas>
-                        </div>
-                    </div>
-                    <div class="chart-container glass-panel">
-                        <div class="chart-header">
-                            <h4>Disk I/O Speeds</h4>
-                        </div>
-                        <div class="chart-body">
-                            <canvas id="diskChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Processes View -->
-            <section id="view-processes" class="content-view">
-                <div class="processes-grid-redesign">
-                    <!-- Top Processes - CPU -->
-                    <div class="process-card glass-panel">
-                        <div class="process-card-header">
-                            <h4>Top Processes - CPU</h4>
-                            <span class="header-icon-arrow">&#9662;</span>
-                        </div>
-                        <div class="process-card-body">
-                            <table class="redesign-table" id="table-proc-cpu">
-                                <thead>
-                                    <tr>
-                                        <th>Time</th>
-                                        <th>Process</th>
-                                        <th class="text-right">Threads</th>
-                                        <th class="text-right">CPU %</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="body-proc-cpu">
-                                    <tr>
-                                        <td colspan="4" class="loading-cell">Loading CPU activity...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Top Processes - Memory -->
-                    <div class="process-card glass-panel">
-                        <div class="process-card-header">
-                            <h4>Top Processes - Memory</h4>
-                            <span class="header-icon-arrow">&#9662;</span>
-                        </div>
-                        <div class="process-card-body">
-                            <table class="redesign-table" id="table-proc-mem">
-                                <thead>
-                                    <tr>
-                                        <th>Time</th>
-                                        <th>Process</th>
-                                        <th class="text-right">Commit (MB)</th>
-                                        <th class="text-right">Working Set (MB)</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="body-proc-mem">
-                                    <tr>
-                                        <td colspan="4" class="loading-cell">Loading Memory activity...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Disk Activity -->
-                    <div class="process-card glass-panel">
-                        <div class="process-card-header">
-                            <h4>Disk Activity</h4>
-                            <span class="header-icon-arrow">&#9662;</span>
-                        </div>
-                        <div class="process-card-body">
-                            <table class="redesign-table" id="table-proc-disk">
-                                <thead>
-                                    <tr>
-                                        <th>Time</th>
-                                        <th>Process</th>
-                                        <th class="text-right">Read</th>
-                                        <th class="text-right">Write</th>
-                                        <th class="text-right">Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="body-proc-disk">
-                                    <tr>
-                                        <td colspan="5" class="loading-cell">Loading Disk I/O activity...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Network Activity -->
-                    <div class="process-card glass-panel">
-                        <div class="process-card-header">
-                            <h4>Network Activity (System)</h4>
-                            <span class="header-icon-arrow">&#9662;</span>
-                        </div>
-                        <div class="process-card-body">
-                            <table class="redesign-table" id="table-proc-net">
-                                <thead>
-                                    <tr>
-                                        <th>Time</th>
-                                        <th>Process</th>
-                                        <th class="text-right">Bytes Sent</th>
-                                        <th class="text-right">Bytes Received</th>
-                                        <th class="text-right">Total I/O</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="body-proc-net">
-                                    <tr>
-                                        <td colspan="5" class="loading-cell">Loading Network I/O activity...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Hardware Spec View -->
-            <section id="view-hardware" class="content-view">
-                <div class="hardware-grid">
-                    <!-- Static specs box -->
-                    <div class="hardware-card glass-panel">
-                        <div class="card-head">
-                            <h3>Computer Information</h3>
-                        </div>
-                        <div class="card-body specs-body">
-                            <div class="spec-item">
-                                <span class="label">Computer Name</span>
-                                <span class="val" id="spec-pc-name">--</span>
-                            </div>
-                            <div class="spec-item">
-                                <span class="label">Operating System</span>
-                                <span class="val" id="spec-os-name">--</span>
-                            </div>
-                            <div class="spec-item">
-                                <span class="label">OS Version</span>
-                                <span class="val" id="spec-os-version">--</span>
-                            </div>
-                            <div class="spec-item">
-                                <span class="label">Motherboard</span>
-                                <span class="val" id="spec-motherboard">--</span>
-                            </div>
-                            <div class="spec-item">
-                                <span class="label">BIOS Version</span>
-                                <span class="val" id="spec-bios">--</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- CPU / RAM / GPU Specs -->
-                    <div class="hardware-card glass-panel">
-                        <div class="card-head">
-                            <h3>Processor & Memory Details</h3>
-                        </div>
-                        <div class="card-body specs-body">
-                            <div class="spec-item">
-                                <span class="label">Processor Model</span>
-                                <span class="val" id="spec-cpu-model">--</span>
-                            </div>
-                            <div class="spec-item">
-                                <span class="label">Physical Cores</span>
-                                <span class="val" id="spec-cpu-physical">--</span>
-                            </div>
-                            <div class="spec-item">
-                                <span class="label">Logical Threads</span>
-                                <span class="val" id="spec-cpu-logical">--</span>
-                            </div>
-                            <div class="spec-item">
-                                <span class="label">Total System RAM</span>
-                                <span class="val" id="spec-ram-total">-- GB</span>
-                            </div>
-                            <div class="spec-item">
-                                <span class="label">GPU Device Name</span>
-                                <span class="val" id="spec-gpu-name">--</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Storage Drives List -->
-                <div class="hardware-table-container glass-panel m-t-20">
-                    <div class="table-header">
-                        <h3>Logical Storage Drives</h3>
-                    </div>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Drive Unit</th>
-                                <th>Mount Point</th>
-                                <th>File System</th>
-                                <th>Total Storage</th>
-                                <th>Used Storage</th>
-                                <th>Free Storage</th>
-                                <th>Capacity Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="spec-drives-body">
-                            <tr>
-                                <td colspan="7" class="loading-cell">Loading drives inventory...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Network Adapters List -->
-                <div class="hardware-table-container glass-panel m-t-20">
-                    <div class="table-header">
-                        <h3>Installed Network Interfaces</h3>
-                    </div>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Interface Name</th>
-                                <th>IP Address</th>
-                                <th>MAC Address</th>
-                                <th>Active Status</th>
-                                <th>Adapter Speed</th>
-                            </tr>
-                        </thead>
-                        <tbody id="spec-network-body">
-                            <tr>
-                                <td colspan="5" class="loading-cell">Loading adapter configurations...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- Apps & Updates View -->
-            <section id="view-software" class="content-view">
-                <!-- Inner Tabs -->
-                <div class="inner-tabs">
-                    <button class="inner-tab-btn active" data-tab="installed-apps">Installed Applications</button>
-                    <button class="inner-tab-btn" data-tab="win-updates">Windows Update & Patches</button>
-                </div>
-
-                <!-- Installed Applications Tab -->
-                <div id="tab-installed-apps" class="tab-content active-tab">
-                    <div class="table-actions glass-panel">
-                        <div class="search-box">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                                stroke-width="2" class="search-icon">
-                                <circle cx="11" cy="11" r="8" />
-                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                            </svg>
-                            <input type="text" id="app-search" placeholder="Search installed apps (Name, Publisher)...">
-                        </div>
-                        <span class="process-count-badge">Total Installed: <strong id="apps-count">0</strong></span>
-                    </div>
-
-                    <div class="table-container glass-panel">
-                        <table class="data-table" id="apps-table">
-                            <thead>
-                                <tr>
-                                    <th data-sort="name" class="sortable">Application Name <span
-                                            class="sort-indicator"></span></th>
-                                    <th data-sort="version" class="sortable">Installed Version <span
-                                            class="sort-indicator"></span></th>
-                                    <th data-sort="publisher" class="sortable">Publisher <span
-                                            class="sort-indicator"></span></th>
-                                    <th data-sort="install_date" class="sortable">Installation Date <span
-                                            class="sort-indicator"></span></th>
-                                </tr>
-                            </thead>
-                            <tbody id="apps-table-body">
-                                <tr>
-                                    <td colspan="4" class="loading-cell">
-                                        <div class="spinner"></div>
-                                        <span>Reading Windows Registry entries...</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div class="table-pagination">
-                        <button class="pagination-btn" id="apps-prev-page" disabled>&laquo; Prev</button>
-                        <span class="pagination-info" id="apps-page-info">Page 1 of 1</span>
-                        <button class="pagination-btn" id="apps-next-page" disabled>Next &raquo;</button>
-                    </div>
-                </div>
-
-                <!-- Windows Updates Tab -->
-                <div id="tab-win-updates" class="tab-content">
-                    <div class="updates-layout">
-                        <!-- Pending Updates Box -->
-                        <div class="pending-updates-panel glass-panel">
-                            <div class="panel-header">
-                                <h3>Available / Pending System Updates</h3>
-                                <button class="btn btn-primary" id="refresh-updates-btn">
-                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-                                    </svg>
-                                    <span>Sync Updates</span>
-                                </button>
-                            </div>
-                            <div class="pending-updates-list" id="pending-list-container">
-                                <div class="loading-cell">
-                                    <div class="spinner"></div>
-                                    <span>Scanning Windows Catalog...</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Update History Table -->
-                        <div class="history-updates-panel glass-panel">
-                            <div class="panel-header">
-                                <h3>Windows Update Log History</h3>
-                            </div>
-                            <div class="table-container-scroll">
-                                <table class="data-table font-mini">
-                                    <thead>
-                                        <tr>
-                                            <th>KB Patch Title</th>
-                                            <th>Installation Date</th>
-                                            <th>Status</th>
-                                            <th>KB Code</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="update-history-body">
-                                        <tr>
-                                            <td colspan="4" class="loading-cell">Loading update logs...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Event Viewer View -->
-            <section id="view-events" class="content-view">
-                <div class="table-actions-grid glass-panel">
-                    <div class="search-box">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                            stroke-width="2" class="search-icon">
-                            <circle cx="11" cy="11" r="8" />
-                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                        </svg>
-                        <input type="text" id="event-search" placeholder="Search event description...">
-                    </div>
-                    <div class="filter-controls-group">
-                        <select id="event-filter-severity" class="custom-select">
-                            <option value="all">All Severities</option>
-                            <option value="error">Critical / Error</option>
-                            <option value="warning">Warning</option>
-                            <option value="information">Information</option>
-                        </select>
-                        <input type="text" id="event-filter-source" class="custom-input"
-                            placeholder="Filter by source...">
-                        <input type="date" id="event-filter-date" class="custom-input">
-                    </div>
-                </div>
-
-                <div class="table-container glass-panel">
-                    <table class="data-table" id="event-table">
-                        <thead>
-                            <tr>
-                                <th>Timestamp</th>
-                                <th>Log Channel</th>
-                                <th>Severity</th>
-                                <th>Source</th>
-                                <th>Event ID</th>
-                                <th>Message Details</th>
-                            </tr>
-                        </thead>
-                        <tbody id="event-table-body">
-                            <tr>
-                                <td colspan="6" class="loading-cell">
-                                    <div class="spinner"></div>
-                                    <span>Scanning Windows Event Log channels...</span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="table-pagination">
-                    <button class="pagination-btn" id="event-prev-page" disabled>&laquo; Prev</button>
-                    <span class="pagination-info" id="event-page-info">Page 1 of 1</span>
-                    <button class="pagination-btn" id="event-next-page" disabled>Next &raquo;</button>
-                </div>
-            </section>
-
-            <!-- Automation & Workflows View -->
-            <section id="view-automation" class="content-view">
-                <!-- Section Action Bar -->
-                <div class="automation-action-bar glass-panel" style="display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; margin-bottom: 28px; border-radius: 14px;">
-                    <div>
-                        <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; color: var(--text-primary);">Active Rule Engine</h3>
-                        <p class="text-secondary" style="font-size: 0.85rem; margin: 0;">Automated threshold evaluation and IT process remediation</p>
-                    </div>
-                    <button class="btn btn-primary" id="btn-open-create-rule-modal" style="padding: 10px 20px; font-weight: 600;">
-                        + New Rule
-                    </button>
-                </div>
-
-                <!-- Rules Grid Section -->
-                <div style="margin-bottom: 36px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-                        <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Configured Automation Rules</h4>
-                    </div>
-                    <div class="automation-rules-grid" id="automation-rules-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px;">
-                        <div class="loading-cell">
-                            <div class="spinner"></div>
-                            <span>Loading automation rules...</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Quick Remediation Catalog Section -->
-                <div class="catalog-panel glass-panel" style="padding: 24px; border-radius: 14px;">
-                    <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 18px;">
-                        Quick IT Remediation Actions
-                    </h4>
-                    <div class="quick-remediation-cards" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
-                        <div class="remediation-card glass-panel" onclick="triggerQuickAction('cleanup_temp')" style="padding: 20px; border-radius: 12px; cursor: pointer; transition: var(--transition-smooth); border: 1px solid var(--card-border);">
-                            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 10px;">
-                                <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(0, 136, 255, 0.15); color: var(--accent-blue); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">⚡</div>
-                                <div>
-                                    <h5 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0;">Temp File Cleanup</h5>
-                                    <span style="font-size: 0.75rem; color: var(--text-muted);">Purge %TEMP% & log caches</span>
-                                </div>
-                            </div>
-                            <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0;">Instantly frees up disk space by clearing temporary system files on the agent machine.</p>
-                        </div>
-
-                        <div class="remediation-card glass-panel" onclick="promptQuickAction('restart_service')" style="padding: 20px; border-radius: 12px; cursor: pointer; transition: var(--transition-smooth); border: 1px solid var(--card-border);">
-                            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 10px;">
-                                <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(0, 230, 118, 0.15); color: var(--accent-green); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">🔄</div>
-                                <div>
-                                    <h5 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0;">Restart Windows Service</h5>
-                                    <span style="font-size: 0.75rem; color: var(--text-muted);">Execute net stop / net start</span>
-                                </div>
-                            </div>
-                            <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0;">Restarts any frozen or unresponsive Windows background service by name.</p>
-                        </div>
-
-                        <div class="remediation-card glass-panel" onclick="promptQuickAction('kill_process')" style="padding: 20px; border-radius: 12px; cursor: pointer; transition: var(--transition-smooth); border: 1px solid var(--card-border);">
-                            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 10px;">
-                                <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255, 61, 0, 0.15); color: var(--accent-red); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">🛑</div>
-                                <div>
-                                    <h5 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0;">Terminate Process</h5>
-                                    <span style="font-size: 0.75rem; color: var(--text-muted);">Kill rogue processes</span>
-                                </div>
-                            </div>
-                            <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0;">Forcefully terminates high-CPU or leaking processes across host memory.</p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- AIOps & Machine Learning View -->
-            <section id="view-aiops" class="content-view">
-                <!-- Executive AIOps Banner -->
-                <div class="aiops-banner glass-panel" style="padding: 24px; border-radius: 14px; margin-bottom: 28px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid var(--accent-blue);">
-                    <div style="max-width: 75%;">
-                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-                            <span class="status-badge online" id="aiops-risk-badge">AI RISK LEVEL: LOW</span>
-                            <span class="text-muted font-mini" id="aiops-generated-at">Updated just now</span>
-                        </div>
-                        <h3 id="aiops-summary-title" style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">
-                            Analyzing System Telemetry...
-                        </h3>
-                        <p id="aiops-action-item" class="text-secondary" style="font-size: 0.88rem; margin: 0;">
-                            Evaluating rolling Z-Score variance & failure forecasts.
-                        </p>
-                    </div>
-                    <div style="text-align: center; background: var(--input-bg); padding: 16px 24px; border-radius: 12px; min-width: 140px;">
-                        <div style="font-size: 2.2rem; font-weight: 800; color: var(--accent-blue);" id="aiops-health-score">--</div>
-                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">AI Health Score</span>
-                    </div>
-                </div>
-
-                <!-- Failure Forecasting Section -->
-                <div style="margin-bottom: 32px;">
-                    <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;">
-                        Resource Exhaustion & Failure Forecasting
-                    </h4>
-                    <div id="aiops-forecast-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px;">
-                        <div class="glass-panel" style="padding: 20px; border-radius: 12px; color: var(--text-secondary);">
-                            Scanning resource depletion vectors...
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 2-Column Grid: Prioritized Z-Score Anomalies & AI Root Cause Diagnostics -->
-                <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px;">
-                    <!-- Prioritized Anomalies Table -->
-                    <div>
-                        <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;">
-                            Prioritized Statistical Anomalies (Z-Score)
-                        </h4>
-                        <div class="table-container glass-panel" style="border-radius: 14px;">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Metric</th>
-                                        <th>Observed Value</th>
-                                        <th>Baseline Avg</th>
-                                        <th>Z-Score</th>
-                                        <th>AI Priority</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="aiops-anomalies-tbody">
-                                    <tr><td colspan="5" class="loading-cell"><div class="spinner"></div><span>Scanning telemetry anomalies...</span></td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- AI Root Cause Diagnostics Panel -->
-                    <div>
-                        <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;">
-                            AI Root-Cause Diagnostic Reasoning
-                        </h4>
-                        <div class="glass-panel" id="aiops-rootcause-panel" style="padding: 20px; border-radius: 14px; max-height: 480px; overflow-y: auto;">
-                            <div class="loading-cell"><div class="spinner"></div><span>Correlating process thread loads & event logs...</span></div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Devices View -->
-            <section id="view-devices" class="content-view">
-                <div class="devices-grid" id="devices-grid">
-                    <div class="loading-cell">
-                        <div class="spinner"></div>
-                        <span>Loading registered devices...</span>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Admin View -->
-            <section id="view-admin" class="content-view">
-                <!-- Organization Overview Cards -->
-                <div class="admin-stats-grid">
-                    <div class="admin-stat-card glass-panel">
-                        <div class="stat-icon users-icon">
-                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                                <circle cx="9" cy="7" r="4"/>
-                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                            </svg>
-                        </div>
-                        <div class="stat-content">
-                            <span class="stat-lbl">Registered Users</span>
-                            <h3 class="stat-val" id="admin-stat-users">0</h3>
-                        </div>
-                    </div>
-                    <div class="admin-stat-card glass-panel">
-                        <div class="stat-icon devices-icon">
-                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                                <line x1="8" y1="21" x2="16" y2="21"/>
-                                <line x1="12" y1="17" x2="12" y2="21"/>
-                            </svg>
-                        </div>
-                        <div class="stat-content">
-                            <span class="stat-lbl">Managed Devices</span>
-                            <h3 class="stat-val" id="admin-stat-devices">0</h3>
-                        </div>
-                    </div>
-                    <div class="admin-stat-card glass-panel">
-                        <div class="stat-icon online-icon">
-                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"/>
-                                <polyline points="12 6 12 12 16 14"/>
-                            </svg>
-                        </div>
-                        <div class="stat-content">
-                            <span class="stat-lbl">Active Online Rate</span>
-                            <h3 class="stat-val" id="admin-stat-online">0 / 0</h3>
-                        </div>
-                    </div>
-                    <div class="admin-stat-card glass-panel">
-                        <div class="stat-icon health-icon">
-                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-                            </svg>
-                        </div>
-                        <div class="stat-content">
-                            <span class="stat-lbl">Avg Health Score</span>
-                            <h3 class="stat-val" id="admin-stat-health">100%</h3>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- User Management Table Panel -->
-                <div class="admin-panel glass-panel">
-                    <div class="panel-header">
-                        <div>
-                            <h3>Enterprise Users & Permissions</h3>
-                            <p class="text-secondary font-mini">Manage accounts, assign roles (Admin/User), and assign devices.</p>
-                        </div>
-                        <button class="btn btn-primary" id="btn-create-user">
-                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="12" y1="5" x2="12" y2="19"/>
-                                <line x1="5" y1="12" x2="19" y2="12"/>
-                            </svg>
-                            <span>Add User</span>
-                        </button>
-                    </div>
-                    <div class="table-container">
-                        <table class="data-table" id="admin-users-table">
-                            <thead>
-                                <tr>
-                                    <th>User Account</th>
-                                    <th>Email Address</th>
-                                    <th>Full Name</th>
-                                    <th>Role</th>
-                                    <th>Account Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="admin-users-table-body">
-                                <tr>
-                                    <td colspan="6" class="loading-cell">
-                                        <div class="spinner"></div>
-                                        <span>Loading enterprise user list...</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Settings View -->
-            <section id="view-settings" class="content-view">
-                <div class="settings-grid">
-                    <!-- General Settings -->
-                    <div class="settings-card glass-panel">
-                        <div class="card-head">
-                            <h3>General Config</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="settings-control">
-                                <label for="setting-refresh">Live Data Refresh Rate</label>
-                                <div class="slider-container">
-                                    <input type="range" id="setting-refresh" min="0.1" max="5.0" step="0.1" value="0.2">
-                                    <span class="slider-val" id="refresh-value">0.2 s</span>
-                                </div>
-                                <span class="help-text">How frequently indicators and live charts update.</span>
-                            </div>
-
-                            <div class="settings-control">
-                                <label for="setting-theme">Color Theme</label>
-                                <select id="setting-theme" class="custom-select select-block">
-                                    <option value="dark">Deep Space (Dark Theme)</option>
-                                    <option value="light">Solar System (Light Theme)</option>
-                                </select>
-                            </div>
-
-                            <div class="settings-control checkbox-control">
-                                <label class="switch">
-                                    <input type="checkbox" id="setting-startup">
-                                    <span class="slider round"></span>
-                                </label>
-                                <div class="switch-label">
-                                    <h4>Launch at Windows Startup</h4>
-                                    <p class="help-text">Runs the dashboard quietly in app mode when you log in.</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Alert Threshold Settings -->
-                    <div class="settings-card glass-panel">
-                        <div class="card-head">
-                            <h3>Alert Limits & Notifications</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="settings-control">
-                                <label for="limit-cpu">CPU Critical Threshold (%)</label>
-                                <div class="slider-container">
-                                    <input type="range" id="limit-cpu" min="50" max="98" step="1" value="90">
-                                    <span class="slider-val" id="limit-cpu-val">90%</span>
-                                </div>
-                            </div>
-
-                            <div class="settings-control">
-                                <label for="limit-cpu-warn">CPU Moderate Warning Threshold (%)</label>
-                                <div class="slider-container">
-                                    <input type="range" id="limit-cpu-warn" min="30" max="85" step="1" value="55">
-                                    <span class="slider-val" id="limit-cpu-warn-val">55%</span>
-                                </div>
-                            </div>
-
-                            <div class="settings-control">
-                                <label for="limit-ram">RAM Critical Threshold (%)</label>
-                                <div class="slider-container">
-                                    <input type="range" id="limit-ram" min="50" max="98" step="1" value="90">
-                                    <span class="slider-val" id="limit-ram-val">90%</span>
-                                </div>
-                            </div>
-
-                            <div class="settings-control">
-                                <label for="limit-ram-warn">RAM Moderate Warning Threshold (%)</label>
-                                <div class="slider-container">
-                                    <input type="range" id="limit-ram-warn" min="30" max="85" step="1" value="65">
-                                    <span class="slider-val" id="limit-ram-warn-val">65%</span>
-                                </div>
-                            </div>
-
-                            <div class="settings-control">
-                                <label for="limit-disk">Storage Free Space Warn Limit (%)</label>
-                                <div class="slider-container">
-                                    <input type="range" id="limit-disk" min="2" max="30" step="1" value="10">
-                                    <span class="slider-val" id="limit-disk-val">10%</span>
-                                </div>
-                                <span class="help-text">Trigger notification if free storage drops below this % of drive
-                                    size.</span>
-                            </div>
-
-                            <div class="settings-control checkbox-control">
-                                <label class="switch">
-                                    <input type="checkbox" id="setting-notifications-toggle" checked>
-                                    <span class="slider round"></span>
-                                </label>
-                                <div class="switch-label">
-                                    <h4>Enable Local Desktop Alerts</h4>
-                                    <p class="help-text">Allows the dashboard to display system warnings as Windows
-                                        Toast Notifications.</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
+            <!-- Dynamic page content -->
+            <div id="page-content" class="page-content">
+                <!-- Pages rendered here by router -->
+            </div>
         </main>
     </div>
 
-    <!-- ══════════════════════════════════════════════════════════
-         Authentication Overlay Modal (Login / Register)
-         ══════════════════════════════════════════════════════════ -->
-    <div class="modal-backdrop" id="auth-modal" style="display: none;">
-        <div class="modal-card glass-panel">
-            <div class="auth-header">
-                <div class="logo-icon large">
-                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
-                        <path d="M12 6v6l4 2"/>
-                    </svg>
-                </div>
-                <h2>Observe<span>X</span> Enterprise</h2>
-                <p class="text-secondary font-mini">Sign in to access your monitoring dashboard</p>
-            </div>
+    <!-- Toast notification container -->
+    <div id="toast-container" class="toast-container"></div>
 
-            <!-- Tab Switcher -->
-            <div class="auth-tabs">
-                <button class="auth-tab-btn active" id="auth-tab-login">Sign In</button>
-                <button class="auth-tab-btn" id="auth-tab-register">Register Account</button>
-            </div>
-
-            <div class="auth-error-msg" id="auth-error-msg" style="display: none;"></div>
-
-            <!-- Login Form -->
-            <form id="form-login" class="auth-form active-form">
-                <div class="form-group">
-                    <label for="login-username">Username or Email</label>
-                    <input type="text" id="login-username" class="custom-input" placeholder="admin@observex.local" required>
-                </div>
-                <div class="form-group">
-                    <label for="login-password">Password</label>
-                    <input type="password" id="login-password" class="custom-input" placeholder="••••••••" required>
-                </div>
-                <button type="submit" class="btn btn-primary btn-block">Sign In</button>
-            </form>
-
-            <!-- Register Form -->
-            <form id="form-register" class="auth-form" style="display: none;">
-                <div class="form-group">
-                    <label for="reg-fullname">Full Name</label>
-                    <input type="text" id="reg-fullname" class="custom-input" placeholder="John Doe">
-                </div>
-                <div class="form-group">
-                    <label for="reg-email">Email Address</label>
-                    <input type="email" id="reg-email" class="custom-input" placeholder="john@company.com" required>
-                </div>
-                <div class="form-group">
-                    <label for="reg-username">Username</label>
-                    <input type="text" id="reg-username" class="custom-input" placeholder="johndoe" required>
-                </div>
-                <div class="form-group">
-                    <label for="reg-password">Password</label>
-                    <input type="password" id="reg-password" class="custom-input" placeholder="••••••••" required minlength="6">
-                </div>
-                <button type="submit" class="btn btn-primary btn-block">Register Account</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════════════════
-         Admin: Create User Modal
-         ══════════════════════════════════════════════════════════ -->
-    <div class="modal-backdrop" id="create-user-modal" style="display: none;">
-        <div class="modal-card glass-panel">
-            <div class="modal-header">
-                <h3>Add New Enterprise User</h3>
-                <span class="modal-close" id="create-user-modal-close">&times;</span>
-            </div>
-            <form id="form-create-user">
-                <div class="form-group">
-                    <label for="admin-user-fullname">Full Name</label>
-                    <input type="text" id="admin-user-fullname" class="custom-input" placeholder="Jane Smith">
-                </div>
-                <div class="form-group">
-                    <label for="admin-user-email">Email Address</label>
-                    <input type="email" id="admin-user-email" class="custom-input" placeholder="jane@company.com" required>
-                </div>
-                <div class="form-group">
-                    <label for="admin-user-username">Username</label>
-                    <input type="text" id="admin-user-username" class="custom-input" placeholder="janesmith" required>
-                </div>
-                <div class="form-group">
-                    <label for="admin-user-password">Password</label>
-                    <input type="password" id="admin-user-password" class="custom-input" placeholder="••••••••" required minlength="6">
-                </div>
-                <div class="form-group">
-                    <label for="admin-user-role">Role Permission</label>
-                    <select id="admin-user-role" class="custom-select">
-                        <option value="user">Standard User (View Assigned Devices Only)</option>
-                        <option value="admin">Administrator (Full Access & Management)</option>
-                    </select>
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" id="btn-cancel-create-user">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create Account</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════════════════
-         Admin: Assign Device Modal
-         ══════════════════════════════════════════════════════════ -->
-    <div class="modal-backdrop" id="assign-device-modal" style="display: none;">
-        <div class="modal-card glass-panel">
-            <div class="modal-header">
-                <h3>Assign Device to User</h3>
-                <span class="modal-close" id="assign-device-modal-close">&times;</span>
-            </div>
-            <form id="form-assign-device">
-                <input type="hidden" id="assign-device-id">
-                <div class="form-group">
-                    <label>Target Device</label>
-                    <div id="assign-device-name-display" class="device-display-box font-medium">Device Name</div>
-                </div>
-                <div class="form-group">
-                    <label for="assign-target-user">Assign to User</label>
-                    <select id="assign-target-user" class="custom-select">
-                        <option value="0">Unassigned (Organization Pool)</option>
-                    </select>
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" id="btn-cancel-assign-device">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Assignment</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════════════════
-         Create Automation Rule Modal
-         ══════════════════════════════════════════════════════════ -->
-    <div class="modal-backdrop" id="create-rule-modal" style="display: none;">
-        <div class="modal-card glass-panel">
-            <div class="modal-header">
-                <h3>Create Automation Rule</h3>
-                <span class="modal-close" id="create-rule-modal-close">&times;</span>
-            </div>
-            <form id="form-create-rule">
-                <div class="form-group">
-                    <label for="rule-name">Rule Name</label>
-                    <input type="text" id="rule-name" class="custom-input" placeholder="e.g. High CPU Auto-Cleanup" required>
-                </div>
-                <div class="form-group">
-                    <label for="rule-metric">Metric Condition</label>
-                    <select id="rule-metric" class="custom-select">
-                        <option value="cpu_usage">CPU Usage (%)</option>
-                        <option value="ram_usage_percent">RAM Usage (%)</option>
-                        <option value="cpu_temp">CPU Temperature (°C)</option>
-                    </select>
-                </div>
-                <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <div>
-                        <label for="rule-operator">Operator</label>
-                        <select id="rule-operator" class="custom-select">
-                            <option value=">">Greater than (&gt;)</option>
-                            <option value="<">Less than (&lt;)</option>
-                            <option value="==">Equals (==)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="rule-threshold">Threshold Value</label>
-                        <input type="number" id="rule-threshold" class="custom-input" placeholder="85" required step="0.1">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="rule-severity">Severity Level</label>
-                    <select id="rule-severity" class="custom-select">
-                        <option value="warning">Warning</option>
-                        <option value="critical">Critical</option>
-                        <option value="info">Info</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="rule-action-type">Automated Action</label>
-                    <select id="rule-action-type" class="custom-select">
-                        <option value="notification">Desktop Notification Only</option>
-                        <option value="cleanup_temp">Run Temp File & Cache Cleanup</option>
-                        <option value="restart_service">Restart Windows Service</option>
-                        <option value="kill_process">Terminate Process</option>
-                    </select>
-                </div>
-                <div class="form-group" id="rule-target-group" style="display: none;">
-                    <label for="rule-action-target">Action Target (Service or Process Name)</label>
-                    <input type="text" id="rule-action-target" class="custom-input" placeholder="e.g. wuauserv or chrome.exe">
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" id="btn-cancel-create-rule">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Automation Rule</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <script src="/static/app.js"></script>
+    <!-- Scripts -->
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/websocket.js"></script>
+    <script src="/static/js/components.js"></script>
+    <script src="/static/js/pages.js"></script>
+    <script src="/static/js/router.js"></script>
+    <script src="/static/js/app.js"></script>
 </body>
-
 </html>
