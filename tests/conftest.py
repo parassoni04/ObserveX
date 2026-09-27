@@ -63,9 +63,20 @@ def init_test_schema():
 
 @pytest.fixture(scope="function", autouse=True)
 def clean_database():
-    """Clean all tables and reset connection manager before each test."""
+    """Clean all tables and reset connection manager, rate limiters, and auth stores before each test."""
     from server.websockets.manager import connection_manager
+    from server.security import login_limiter, registration_limiter, enrollment_limiter
     connection_manager.reset()
+
+    # Reset rate limiter state between tests
+    login_limiter._requests.clear()
+    registration_limiter._requests.clear()
+    enrollment_limiter._requests.clear()
+
+    # Reset in-memory verification/reset stores
+    from server.routers.auth import _verification_store, _password_reset_store
+    _verification_store.clear()
+    _password_reset_store.clear()
 
     async def _clean():
         async with db_module.engine.begin() as conn:
@@ -105,27 +116,27 @@ def seed_data():
             admin_a = User(
                 email="admin_a@alpha.com", username="admin_a",
                 hashed_password=PASSWORD_HASH, role="admin",
-                is_active=True, organization_id=org_a.id,
+                is_active=True, email_verified=True, organization_id=org_a.id,
             )
             user_a1 = User(
                 email="user_a1@alpha.com", username="user_a1",
                 hashed_password=PASSWORD_HASH, role="user",
-                is_active=True, organization_id=org_a.id,
+                is_active=True, email_verified=True, organization_id=org_a.id,
             )
             user_a2 = User(
                 email="user_a2@alpha.com", username="user_a2",
                 hashed_password=PASSWORD_HASH, role="user",
-                is_active=True, organization_id=org_a.id,
+                is_active=True, email_verified=True, organization_id=org_a.id,
             )
             admin_b = User(
                 email="admin_b@beta.com", username="admin_b",
                 hashed_password=PASSWORD_HASH, role="admin",
-                is_active=True, organization_id=org_b.id,
+                is_active=True, email_verified=True, organization_id=org_b.id,
             )
             user_b1 = User(
                 email="user_b1@beta.com", username="user_b1",
                 hashed_password=PASSWORD_HASH, role="user",
-                is_active=True, organization_id=org_b.id,
+                is_active=True, email_verified=True, organization_id=org_b.id,
             )
             session.add_all([admin_a, user_a1, user_a2, admin_b, user_b1])
             await session.commit()

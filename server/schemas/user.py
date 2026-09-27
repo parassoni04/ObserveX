@@ -22,6 +22,7 @@ class UserOut(ORMBase):
     full_name: Optional[str] = None
     role: str
     is_active: bool
+    email_verified: bool = False
     organization_id: int
     created_at: Optional[datetime.datetime] = None
 

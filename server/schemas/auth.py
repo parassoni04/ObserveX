@@ -101,6 +101,39 @@ class CreateEnvironmentResponse(BaseModel):
     organization: "OrganizationOut"
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Request a password reset link/token for an email."""
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        clean = v.strip().lower()
+        if not _EMAIL_REGEX.match(clean):
+            raise ValueError("Invalid email format")
+        return clean
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset password using a valid reset token."""
+    token: str
+    new_password: str
+    confirm_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        return v
+
+    @model_validator(mode="after")
+    def validate_matching_passwords(self):
+        if self.new_password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
+
+
 # Forward references resolved at module level
 from server.schemas.user import UserOut
 from server.schemas.organization import OrganizationOut

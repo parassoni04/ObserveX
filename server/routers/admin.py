@@ -106,6 +106,7 @@ async def create_user_admin(
         hashed_password=hash_password(req.password),
         role=req.role if req.role in ("admin", "user") else "user",
         is_active=True,
+        email_verified=True,  # Admin vouches for users they create
         organization_id=admin_user.organization_id,  # Always forced to admin's org
     )
     db.add(user)
