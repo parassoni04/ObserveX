@@ -49,12 +49,15 @@ const API = (() => {
         createEnv:            (data) => _request('POST', '/api/v1/auth/create-environment', data),
         sendVerificationCode: (email) => _request('POST', '/api/v1/auth/send-verification-code', { email }),
         verifyCode:           (email, code) => _request('POST', '/api/v1/auth/verify-code', { email, code }),
+        forgotPassword:       (email) => _request('POST', '/api/v1/auth/forgot-password', { email }),
+        resetPassword:        (data) => _request('POST', '/api/v1/auth/reset-password', data),
         me:                   ()     => _request('GET', '/api/v1/auth/me'),
 
         // ── Enrollment ──
         listCodes:      ()     => _request('GET', '/api/v1/enrollment/codes'),
         createCode:     (data) => _request('POST', '/api/v1/enrollment/codes', data),
         deleteCode:     (id)   => _request('DELETE', `/api/v1/enrollment/codes/${id}`),
+        deleteCodePermanent: (id) => _request('DELETE', `/api/v1/enrollment/codes/${id}/permanent`),
 
         // ── Admin ──
         overview:       ()     => _request('GET', '/api/v1/admin/overview'),
@@ -96,5 +99,8 @@ const API = (() => {
 
         // ── Health ──
         health:     ()   => _request('GET', '/api/v1/health'),
+
+        // ── Downloads ──
+        downloadAgentUrl: '/api/v1/downloads/agent',
     };
 })();

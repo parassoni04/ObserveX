@@ -57,11 +57,11 @@ const Pages = (() => {
                 return;
             }
             el.innerHTML = UI.table(
-                ['Severity', 'Device', 'Metric', 'Message', 'Time'],
+                ['Severity', 'Device', 'Type', 'Message', 'Time'],
                 alerts.map(a => [
                     UI.severityBadge(a.severity),
                     a.device_id,
-                    a.metric_name || '—',
+                    a.alert_type || '—',
                     a.message || '—',
                     UI.timeAgo(a.timestamp),
                 ]),
@@ -365,12 +365,14 @@ const Pages = (() => {
                 ${Auth.isAdmin ? '<div class="section-header"><h3 class="section-title">Alert Rules</h3><button class="btn btn-primary btn-sm" onclick="Pages.showCreateAlertRuleModal()">+ New Rule</button></div><div id="alert-rules-list">' + UI.loading() + '</div><hr style="border-color:var(--border-primary);margin:var(--space-xl) 0">' : ''}
                 <div class="section-header"><h3 class="section-title">Alert History</h3></div>
                 ${alerts.length ? UI.table(
-                    ['Severity', 'Device', 'Metric', 'Value', 'Message', 'Time'],
+                    ['Severity', 'Device', 'Type', 'Title', 'Message', 'Time'],
                     alerts.map(a => [
                         UI.severityBadge(a.severity),
-                        a.device_id, a.metric_name || '—',
-                        a.threshold_value != null ? a.threshold_value : '—',
-                        a.message || '—', UI.timeAgo(a.timestamp),
+                        a.device_id,
+                        a.alert_type || '—',
+                        a.title || '—',
+                        `<span style="max-width:280px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.message || '—'}</span>`,
+                        UI.timeAgo(a.timestamp),
                     ]),
                 ) : '<div class="empty-state"><div class="empty-state-title">No alerts</div></div>'}
             `;
@@ -436,18 +438,36 @@ const Pages = (() => {
             el.innerHTML = `
                 <div class="section-header">
                     <h3 class="section-title">Enrollment Codes</h3>
-                    <button class="btn btn-primary btn-sm" onclick="Pages.showCreateCodeModal()">+ Generate Code</button>
+                    <div style="display:flex;gap:var(--space-sm)">
+                        <a href="${API.downloadAgentUrl}" class="btn btn-secondary btn-sm" download>
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Download Agent
+                        </a>
+                        <button class="btn btn-primary btn-sm" onclick="Pages.showCreateCodeModal()">+ Generate Code</button>
+                    </div>
                 </div>
                 <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:var(--space-lg)">Share these codes with devices to enroll them into your organization.</p>
                 ${codes.length ? UI.table(
-                    ['Code', 'Uses', 'Max Uses', 'Expires', 'Active', 'Actions'],
-                    codes.map(c => [
-                        `<span class="code-display" style="font-size:0.9rem;padding:0.3rem 0.6rem">${c.code}</span>`,
-                        c.uses, c.max_uses || '∞',
-                        UI.formatDate(c.expires_at),
-                        c.is_active ? '<span style="color:var(--success)">✓</span>' : '<span style="color:var(--danger)">✗</span>',
-                        c.is_active ? `<button class="btn btn-danger btn-sm" onclick="Pages.deleteCode(${c.id})">Revoke</button>` : '—',
-                    ]),
+                    ['Code', 'Uses', 'Max Uses', 'Expires', 'Status', 'Actions'],
+                    codes.map(c => {
+                        const isUsable = !c.is_revoked && new Date(c.expires_at) > new Date() && (c.max_uses === 0 || c.usage_count < c.max_uses);
+                        const statusLabel = c.is_revoked ? 'Revoked' : new Date(c.expires_at) <= new Date() ? 'Expired' : (c.max_uses > 0 && c.usage_count >= c.max_uses) ? 'Exhausted' : 'Active';
+                        const statusColor = isUsable ? 'var(--success)' : 'var(--danger)';
+                        let actions = '';
+                        if (isUsable) {
+                            actions += `<button class="btn btn-danger btn-sm" onclick="Pages.revokeCode(${c.id})" style="margin-right:4px">Revoke</button>`;
+                        }
+                        actions += `<button class="btn btn-ghost btn-sm" onclick="Pages.deleteCodePermanent(${c.id})" title="Delete from history" style="color:var(--danger)">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                        </button>`;
+                        return [
+                            `<span class="code-display" style="font-size:0.9rem;padding:0.3rem 0.6rem">${c.code}</span>`,
+                            c.usage_count, c.max_uses || '∞',
+                            UI.formatDate(c.expires_at),
+                            `<span style="color:${statusColor};font-weight:600;font-size:0.8rem">${statusLabel}</span>`,
+                            actions,
+                        ];
+                    }),
                 ) : '<div class="empty-state"><div class="empty-state-title">No enrollment codes</div><p>Generate a code to start enrolling devices.</p></div>'}
             `;
         } catch (e) {
@@ -474,7 +494,7 @@ const Pages = (() => {
                         a.username || `User #${a.user_id}`,
                         a.assigned_by || '—',
                         UI.formatDate(a.assigned_at),
-                        `<button class="btn btn-danger btn-sm" onclick="Pages.deleteAssignment(${a.id})">Remove</button>`,
+                        `<button class="btn btn-danger btn-sm" onclick="Pages.confirmRevokeAssignment(${a.id}, '${(a.device_hostname || 'Device #' + a.device_id).replace(/'/g, "\\'")}')">Revoke</button>`,
                     ]),
                     'No assignments',
                 )}
@@ -601,8 +621,29 @@ const Pages = (() => {
     async function deleteUser(id) {
         try { await API.deleteUser(id); UI.toast('User removed', 'success'); Router.refresh(); } catch (e) { UI.toast(e.message, 'error'); }
     }
-    async function deleteCode(id) {
-        try { await API.deleteCode(id); UI.toast('Code revoked', 'success'); Router.refresh(); } catch (e) { UI.toast(e.message, 'error'); }
+    async function revokeCode(id) {
+        UI.showModal('Revoke Enrollment Code', '<p>Are you sure you want to revoke this enrollment code? Devices will no longer be able to enroll with it.</p>', [
+            { label: 'Cancel', onClick: UI.closeModal },
+            { label: 'Revoke', cls: 'btn-danger', onClick: async () => {
+                try { await API.deleteCode(id); UI.closeModal(); UI.toast('Code revoked', 'success'); Router.refresh(); } catch (e) { UI.toast(e.message, 'error'); }
+            }},
+        ]);
+    }
+    async function deleteCodePermanent(id) {
+        UI.showModal('Delete Enrollment Code', '<p>Permanently delete this enrollment code from history? This cannot be undone.</p>', [
+            { label: 'Cancel', onClick: UI.closeModal },
+            { label: 'Delete', cls: 'btn-danger', onClick: async () => {
+                try { await API.deleteCodePermanent(id); UI.closeModal(); UI.toast('Code deleted from history', 'success'); Router.refresh(); } catch (e) { UI.toast(e.message, 'error'); }
+            }},
+        ]);
+    }
+    async function confirmRevokeAssignment(id, deviceName) {
+        UI.showModal('Revoke Assignment', `<p>Are you sure you want to revoke the assignment for <strong>${deviceName}</strong>? The user will lose access to this device.</p>`, [
+            { label: 'Cancel', onClick: UI.closeModal },
+            { label: 'Revoke', cls: 'btn-danger', onClick: async () => {
+                try { await API.deleteAssignment(id); UI.closeModal(); UI.toast('Assignment revoked', 'success'); Router.refresh(); } catch (e) { UI.toast(e.message, 'error'); }
+            }},
+        ]);
     }
     async function deleteAssignment(id) {
         try { await API.deleteAssignment(id); UI.toast('Assignment removed', 'success'); Router.refresh(); } catch (e) { UI.toast(e.message, 'error'); }
@@ -616,7 +657,7 @@ const Pages = (() => {
         renderAlerts, renderUsers, renderEnrollment, renderAssignments,
         // Exposed modal actions (called from onclick handlers)
         showCreateUserModal, showCreateCodeModal, showCreateAssignmentModal, showCreateAlertRuleModal,
-        confirmDeleteDevice, deleteUser, deleteCode, deleteAssignment, deleteAlertRule,
+        confirmDeleteDevice, deleteUser, revokeCode, deleteCodePermanent, confirmRevokeAssignment, deleteAssignment, deleteAlertRule,
         clearRefresh: _clearRefresh,
     };
 })();

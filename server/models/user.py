@@ -31,6 +31,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     role = Column(String(50), default="user", nullable=False)  # "admin" or "user"
     is_active = Column(Boolean, default=True, nullable=False)
+    email_verified = Column(Boolean, default=False, nullable=False)
     organization_id = Column(
         Integer,
         ForeignKey("organizations.id", ondelete="CASCADE"),

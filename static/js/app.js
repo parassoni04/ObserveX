@@ -212,16 +212,134 @@
         }
     });
 
-    // Toggle between login and create-env forms
+    // ── Helper: Hide all auth forms ──
+    function _hideAllAuthForms() {
+        ['login-form', 'create-env-form', 'forgot-password-form', 'reset-password-form'].forEach(id => {
+            document.getElementById(id).classList.add('hidden');
+        });
+    }
+
+    // Toggle between auth forms
     document.getElementById('show-create-env').addEventListener('click', () => {
-        document.getElementById('login-form').classList.add('hidden');
+        _hideAllAuthForms();
         document.getElementById('create-env-form').classList.remove('hidden');
         _resetVerificationUI();
     });
     document.getElementById('show-login').addEventListener('click', () => {
-        document.getElementById('create-env-form').classList.add('hidden');
+        _hideAllAuthForms();
         document.getElementById('login-form').classList.remove('hidden');
         _resetVerificationUI();
+    });
+    document.getElementById('show-forgot-password').addEventListener('click', () => {
+        _hideAllAuthForms();
+        document.getElementById('forgot-password-form').classList.remove('hidden');
+    });
+    document.getElementById('show-reset-password').addEventListener('click', () => {
+        _hideAllAuthForms();
+        document.getElementById('reset-password-form').classList.remove('hidden');
+    });
+    document.getElementById('forgot-back-to-login').addEventListener('click', () => {
+        _hideAllAuthForms();
+        document.getElementById('login-form').classList.remove('hidden');
+    });
+    document.getElementById('reset-back-to-login').addEventListener('click', () => {
+        _hideAllAuthForms();
+        document.getElementById('login-form').classList.remove('hidden');
+    });
+
+    // ── Forgot Password Form ──
+    document.getElementById('forgot-password-form-element').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('forgot-password-btn');
+        const btnText = document.getElementById('forgot-password-btn-text');
+        const errEl = document.getElementById('forgot-password-error');
+        const successEl = document.getElementById('forgot-password-success');
+        const devBanner = document.getElementById('forgot-dev-token-banner');
+        errEl.classList.add('hidden');
+        successEl.classList.add('hidden');
+        devBanner.classList.add('hidden');
+
+        const email = document.getElementById('forgot-email').value.trim().toLowerCase();
+
+        btnText.textContent = 'Sending...';
+        btn.querySelector('.btn-loader').classList.remove('hidden');
+        btn.disabled = true;
+
+        try {
+            const res = await API.forgotPassword(email);
+            successEl.textContent = res.message || 'If an account with that email exists, a reset token has been sent.';
+            successEl.classList.remove('hidden');
+
+            if (res.dev_token) {
+                document.getElementById('forgot-dev-token-text').textContent = res.dev_token;
+                devBanner.classList.remove('hidden');
+            }
+        } catch (err) {
+            errEl.textContent = err.message;
+            errEl.classList.remove('hidden');
+        } finally {
+            btnText.textContent = 'Send Reset Token';
+            btn.querySelector('.btn-loader').classList.add('hidden');
+            btn.disabled = false;
+        }
+    });
+
+    // Click dev token to copy
+    document.getElementById('forgot-dev-token-banner')?.addEventListener('click', () => {
+        const token = document.getElementById('forgot-dev-token-text').textContent.trim();
+        if (token) {
+            navigator.clipboard?.writeText(token);
+            UI.toast('Reset token copied to clipboard', 'info');
+        }
+    });
+
+    // ── Reset Password Form ──
+    document.getElementById('reset-password-form-element').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('reset-password-btn');
+        const btnText = document.getElementById('reset-password-btn-text');
+        const errEl = document.getElementById('reset-password-error');
+        const successEl = document.getElementById('reset-password-success');
+        errEl.classList.add('hidden');
+        successEl.classList.add('hidden');
+
+        const token = document.getElementById('reset-token').value.trim();
+        const newPassword = document.getElementById('reset-new-password').value;
+        const confirmPassword = document.getElementById('reset-confirm-password').value;
+
+        if (newPassword !== confirmPassword) {
+            errEl.textContent = 'Passwords do not match.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+        if (newPassword.length < 8) {
+            errEl.textContent = 'Password must be at least 8 characters.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+
+        btnText.textContent = 'Resetting...';
+        btn.querySelector('.btn-loader').classList.remove('hidden');
+        btn.disabled = true;
+
+        try {
+            const res = await API.resetPassword({
+                token,
+                new_password: newPassword,
+                confirm_password: confirmPassword,
+            });
+            successEl.textContent = res.message || 'Password reset successfully. You can now sign in.';
+            successEl.classList.remove('hidden');
+            // Clear form
+            document.getElementById('reset-password-form-element').reset();
+        } catch (err) {
+            errEl.textContent = err.message;
+            errEl.classList.remove('hidden');
+        } finally {
+            btnText.textContent = 'Reset Password';
+            btn.querySelector('.btn-loader').classList.add('hidden');
+            btn.disabled = false;
+        }
     });
 
     // Logout

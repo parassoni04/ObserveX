@@ -51,6 +51,7 @@ ACTIONS = {
     "ENROLLMENT_FAILED": "enrollment.failed",
     "ACCESS_DENIED": "access.denied",
     "CREDENTIAL_REVOKED": "credential.revoked",
+    "PASSWORD_RESET": "user.password_reset",
 }
 
 

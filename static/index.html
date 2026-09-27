@@ -57,9 +57,66 @@
                         <span class="btn-loader hidden"></span>
                     </button>
                 </form>
+                <div class="auth-footer" style="flex-direction:column;gap:var(--space-sm)">
+                    <div style="display:flex;align-items:center;gap:var(--space-xs)">
+                        <span>No organization yet?</span>
+                        <button id="show-create-env" class="btn-link">Create Environment</button>
+                    </div>
+                    <button id="show-forgot-password" class="btn-link" style="font-size:0.8rem;color:var(--text-tertiary)">Forgot Password?</button>
+                </div>
+            </div>
+
+            <!-- Forgot Password Form -->
+            <div id="forgot-password-form" class="auth-card hidden">
+                <h2 class="auth-title">Reset Password</h2>
+                <p class="auth-subtitle">Enter your email to receive a password reset token</p>
+                <form id="forgot-password-form-element">
+                    <div class="form-group">
+                        <label for="forgot-email">Email Address</label>
+                        <input type="email" id="forgot-email" placeholder="admin@company.com" required autocomplete="email">
+                    </div>
+                    <div id="forgot-password-error" class="form-error hidden"></div>
+                    <div id="forgot-password-success" class="hidden" style="background:var(--success-dim);color:var(--success);padding:0.6rem 0.9rem;border-radius:var(--radius-sm);font-size:0.85rem;margin-bottom:var(--space-md);border:1px solid rgba(34,197,94,0.2)"></div>
+                    <div id="forgot-dev-token-banner" class="hidden" style="margin-bottom:var(--space-md);padding:0.45rem 0.75rem;background:rgba(99,102,241,0.12);border:1px dashed rgba(99,102,241,0.4);border-radius:var(--radius-sm);font-size:0.75rem;color:#818cf8;cursor:pointer;word-break:break-all">
+                        <span>Dev Token: <strong id="forgot-dev-token-text"></strong> (click to copy)</span>
+                    </div>
+                    <button type="submit" id="forgot-password-btn" class="btn btn-primary btn-full">
+                        <span class="btn-text" id="forgot-password-btn-text">Send Reset Token</span>
+                        <span class="btn-loader hidden"></span>
+                    </button>
+                </form>
+                <div class="auth-footer" style="flex-direction:column;gap:var(--space-sm)">
+                    <button id="show-reset-password" class="btn-link">I have a reset token</button>
+                    <button id="forgot-back-to-login" class="btn-link" style="font-size:0.8rem;color:var(--text-tertiary)">Back to Sign In</button>
+                </div>
+            </div>
+
+            <!-- Reset Password Form -->
+            <div id="reset-password-form" class="auth-card hidden">
+                <h2 class="auth-title">Set New Password</h2>
+                <p class="auth-subtitle">Enter your reset token and new password</p>
+                <form id="reset-password-form-element">
+                    <div class="form-group">
+                        <label for="reset-token">Reset Token</label>
+                        <input type="text" id="reset-token" placeholder="Paste your reset token here" required style="font-family:var(--font-mono);font-size:0.8rem">
+                    </div>
+                    <div class="form-group">
+                        <label for="reset-new-password">New Password</label>
+                        <input type="password" id="reset-new-password" placeholder="••••••••" required minlength="8" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="reset-confirm-password">Confirm New Password</label>
+                        <input type="password" id="reset-confirm-password" placeholder="••••••••" required minlength="8" autocomplete="new-password">
+                    </div>
+                    <div id="reset-password-error" class="form-error hidden"></div>
+                    <div id="reset-password-success" class="hidden" style="background:var(--success-dim);color:var(--success);padding:0.6rem 0.9rem;border-radius:var(--radius-sm);font-size:0.85rem;margin-bottom:var(--space-md);border:1px solid rgba(34,197,94,0.2)"></div>
+                    <button type="submit" id="reset-password-btn" class="btn btn-primary btn-full">
+                        <span class="btn-text" id="reset-password-btn-text">Reset Password</span>
+                        <span class="btn-loader hidden"></span>
+                    </button>
+                </form>
                 <div class="auth-footer">
-                    <span>No organization yet?</span>
-                    <button id="show-create-env" class="btn-link">Create Environment</button>
+                    <button id="reset-back-to-login" class="btn-link" style="font-size:0.8rem;color:var(--text-tertiary)">Back to Sign In</button>
                 </div>
             </div>
 

@@ -101,6 +101,30 @@ async def revoke_enrollment_code(
     return {"status": "revoked", "code_id": code_id}
 
 
+@router.delete("/codes/{code_id}/permanent")
+async def delete_enrollment_code_permanently(
+    code_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Permanently delete an enrollment code from history (admin only)."""
+    code_obj = await db.get(EnrollmentCode, code_id)
+    if not code_obj or code_obj.organization_id != admin_user.organization_id:
+        raise HTTPException(status_code=404, detail="Enrollment code not found")
+
+    await db.delete(code_obj)
+    await db.commit()
+
+    logger.info("Enrollment code permanently deleted: id=%s by admin=%s", code_id, admin_user.id)
+    await log_audit(
+        ACTIONS.get("ENROLLMENT_CODE_DELETED", "enrollment_code_deleted"),
+        actor_type="user", actor_id=str(admin_user.id),
+        organization_id=admin_user.organization_id,
+        target_type="enrollment_code", target_id=str(code_id),
+    )
+    return {"status": "deleted", "code_id": code_id}
+
+
 @router.post("/enroll", response_model=EnrollmentResponse, dependencies=[Depends(enrollment_limiter)])
 async def enroll_agent(
     req: EnrollmentRequest,

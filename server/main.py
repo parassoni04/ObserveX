@@ -156,10 +156,30 @@ async def health_check():
     }
 
 
-# ── Serve Frontend SPA ──
+# ── Agent Download ──
 
 import os
-_static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+
+_project_root = os.path.dirname(os.path.dirname(__file__))
+_agent_exe_path = os.path.join(_project_root, "dist", "ObserveXAgent.exe")
+
+
+@app.get("/api/v1/downloads/agent")
+async def download_agent():
+    """Download the ObserveX Agent executable."""
+    if not os.path.isfile(_agent_exe_path):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Agent executable not found on server")
+    return FileResponse(
+        _agent_exe_path,
+        media_type="application/octet-stream",
+        filename="ObserveXAgent.exe",
+    )
+
+
+# ── Serve Frontend SPA ──
+
+_static_dir = os.path.join(_project_root, "static")
 if os.path.isdir(_static_dir):
     app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
