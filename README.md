@@ -31,7 +31,7 @@ ObserveX is a production-grade, multi-tenant device observability and autonomous
 └────────────────────────┘     │  └──────┬───────┘   └───────┬───────┘  │
                                │         │                   │          │
                                │  ┌──────┴───────────────────┴───────┐  │
-                               │  │   TenantGuard & RBAC Security   │  │
+                               │  │   TenantGuard & RBAC Security    │  │
                                │  └──────────────────┬───────────────┘  │
                                │                     │                  │
                                │  ┌──────────────────┴───────────────┐  │
