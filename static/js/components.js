@@ -69,10 +69,11 @@ const UI = (() => {
     }
 
     // ── Stat Card ──
-    function statCard(value, label, color = 'purple', iconSVG = '') {
+    function statCard(value, label, color = 'accent', iconSVG = '') {
+        const iconCls = color === 'purple' ? 'accent' : color;
         return `
             <div class="stat-card">
-                <div class="stat-icon ${color}">${iconSVG}</div>
+                <div class="stat-icon ${iconCls}">${iconSVG}</div>
                 <div>
                     <div class="stat-value">${value}</div>
                     <div class="stat-label">${label}</div>

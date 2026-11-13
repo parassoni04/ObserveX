@@ -177,15 +177,29 @@ async def download_agent():
     )
 
 
-# ── Serve Frontend SPA ──
+# ── Serve Frontend SPA & Landing Page ──
 
 _static_dir = os.path.join(_project_root, "static")
 if os.path.isdir(_static_dir):
     app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
     @app.get("/")
-    async def serve_spa():
-        """Serve the frontend SPA."""
+    async def serve_landing():
+        """Serve the public landing page."""
+        landing_path = os.path.join(_static_dir, "landing.html")
+        if os.path.exists(landing_path):
+            return FileResponse(landing_path)
+        index_path = os.path.join(_static_dir, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        return {"message": "ObserveX Server v2.0.0 — Frontend not found"}
+
+    @app.get("/app")
+    @app.get("/app/{full_path:path}")
+    @app.get("/login")
+    @app.get("/register")
+    async def serve_app(full_path: str = ""):
+        """Serve the authenticated frontend SPA."""
         index_path = os.path.join(_static_dir, "index.html")
         if os.path.exists(index_path):
             return FileResponse(index_path)
