@@ -5,8 +5,20 @@ venv
 *.pyc
 *.pyo
 *.db
-*.exe
-*.spec
 build/
-dist/
 installer/Output/
+
+# Ignore PyInstaller specs and build caches
+*.spec
+
+# # Ignore dist build debris, but track release agent packages
+# dist/*
+# !dist/ObserveXAgent.exe
+# !dist/ObserveXAgent-Windows.zip
+# !dist/run_agent.bat
+# !dist/config.yaml
+# !dist/README.txt
+
+# # General exe ignore except release agent
+# *.exe
+# !dist/ObserveXAgent.exe

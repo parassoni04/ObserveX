@@ -1,0 +1,18 @@
+server:
+  url: https://observex.onrender.com
+  websocket_url: wss://observex.onrender.com
+device:
+  device_id: 1
+  device_uuid: e07ea5b9-3afb-47ce-8da6-4e3d4fee7a28
+  credential: 2GscS9DHQO1-VYxFSenG423bNgMwaHDUuehBY-PtQe8
+  name: OMEN
+agent:
+  metrics_interval: 1.0
+  heartbeat_interval: 10.0
+  version: 2.1.0
+logging:
+  level: INFO
+network:
+  verify_ssl: true
+  connect_timeout: 10.0
+  max_reconnect_backoff: 30.0
