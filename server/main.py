@@ -179,18 +179,37 @@ async def health_check():
 import os
 
 _project_root = os.path.dirname(os.path.dirname(__file__))
-_agent_exe_path = os.path.join(_project_root, "dist", "ObserveXAgent.exe")
-_agent_zip_path = os.path.join(_project_root, "dist", "ObserveXAgent-Windows.zip")
+
+def _find_agent_path(filename: str) -> str | None:
+    """Find agent binary in release dist/ or static/downloads/ directory."""
+    candidates = [
+        os.path.join(_project_root, "dist", filename),
+        os.path.join(_project_root, "static", "downloads", filename),
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    return None
 
 
 @app.get("/api/v1/downloads/agent")
 async def download_agent():
     """Download the ObserveX Agent executable."""
-    if not os.path.isfile(_agent_exe_path):
+    # Support external cloud/CDN or GitHub Release redirect if configured in production
+    external_url = os.getenv("AGENT_DOWNLOAD_URL")
+    if external_url:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(external_url, status_code=302)
+
+    exe_path = _find_agent_path("ObserveXAgent.exe")
+    if not exe_path:
         from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Agent executable not found on server")
+        raise HTTPException(
+            status_code=404,
+            detail="Agent executable not found on server. Ensure dist/ObserveXAgent.exe is deployed or AGENT_DOWNLOAD_URL is configured."
+        )
     return FileResponse(
-        _agent_exe_path,
+        exe_path,
         media_type="application/octet-stream",
         filename="ObserveXAgent.exe",
         headers={"Content-Disposition": 'attachment; filename="ObserveXAgent.exe"'},
@@ -200,11 +219,21 @@ async def download_agent():
 @app.get("/api/v1/downloads/agent/zip")
 async def download_agent_zip():
     """Download the ObserveX Agent bundle as a zip archive."""
-    if not os.path.isfile(_agent_zip_path):
+    # Support external cloud/CDN or GitHub Release redirect if configured in production
+    external_url = os.getenv("AGENT_ZIP_DOWNLOAD_URL")
+    if external_url:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(external_url, status_code=302)
+
+    zip_path = _find_agent_path("ObserveXAgent-Windows.zip")
+    if not zip_path:
         from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Agent zip bundle not found on server")
+        raise HTTPException(
+            status_code=404,
+            detail="Agent zip bundle not found on server. Ensure dist/ObserveXAgent-Windows.zip is deployed or AGENT_ZIP_DOWNLOAD_URL is configured."
+        )
     return FileResponse(
-        _agent_zip_path,
+        zip_path,
         media_type="application/zip",
         filename="ObserveXAgent-Windows.zip",
         headers={"Content-Disposition": 'attachment; filename="ObserveXAgent-Windows.zip"'},
