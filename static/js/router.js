@@ -11,6 +11,7 @@ const Router = (() => {
         'users':         { title: 'Users',          subtitle: 'Organization members',      render: Pages.renderUsers, admin: true },
         'enrollment':    { title: 'Enrollment',     subtitle: 'Device enrollment codes',   render: Pages.renderEnrollment, admin: true },
         'assignments':   { title: 'Assignments',    subtitle: 'Device-user mappings',      render: Pages.renderAssignments, admin: true },
+        'downloads':     { title: 'Agent Downloads', subtitle: 'Windows telemetry agent packages', render: Pages.renderDownloads },
     };
 
     let _currentPage = null;

@@ -348,6 +348,43 @@
         UI.toast('Signed out', 'info');
     });
 
+    // ── Theme Management (Dark / Light Mode) ──
+    function applyTheme(theme) {
+        if (theme === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+            document.body.classList.add('light-theme');
+            const sunIcon = document.querySelector('.theme-icon-sun');
+            const moonIcon = document.querySelector('.theme-icon-moon');
+            if (sunIcon) sunIcon.classList.remove('hidden');
+            if (moonIcon) moonIcon.classList.add('hidden');
+            const label = document.getElementById('theme-toggle-text');
+            if (label) label.textContent = 'Light';
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+            document.body.classList.remove('light-theme');
+            const sunIcon = document.querySelector('.theme-icon-sun');
+            const moonIcon = document.querySelector('.theme-icon-moon');
+            if (sunIcon) sunIcon.classList.add('hidden');
+            if (moonIcon) moonIcon.classList.remove('hidden');
+            const label = document.getElementById('theme-toggle-text');
+            if (label) label.textContent = 'Dark';
+        }
+        try { localStorage.setItem('observex_theme', theme); } catch (_) {}
+    }
+
+    const savedTheme = (function() {
+        try { return localStorage.getItem('observex_theme') || 'dark'; } catch (_) { return 'dark'; }
+    })();
+    applyTheme(savedTheme);
+
+    const themeToggleBtn = document.getElementById('theme-toggle-btn');
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', () => {
+            const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+            applyTheme(current === 'light' ? 'dark' : 'light');
+        });
+    }
+
     // ── Enter App ──
     function _enterApp() {
         document.getElementById('auth-screen').classList.remove('active');
