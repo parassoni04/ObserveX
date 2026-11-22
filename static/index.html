@@ -7,20 +7,46 @@
     <title>ObserveX — Enterprise Device Monitoring</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/design-system.css">
-    <link rel="stylesheet" href="/static/css/components.css">
-    <link rel="stylesheet" href="/static/css/pages.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/design-system.css?v=2.2.0">
+    <link rel="stylesheet" href="/static/css/components.css?v=2.2.0">
+    <link rel="stylesheet" href="/static/css/pages.css?v=2.2.0">
+    <script>
+        (function() {
+            try {
+                const theme = localStorage.getItem('observex_theme');
+                if (theme === 'light') {
+                    document.documentElement.setAttribute('data-theme', 'light');
+                }
+            } catch (_) {}
+        })();
+    </script>
 </head>
 <body>
     <!-- Auth Screen -->
     <div id="auth-screen" class="screen active">
         <div class="auth-container">
+            <!-- Top navigation bar with Back link -->
+            <div class="auth-top-nav">
+                <a href="/" class="auth-back-link">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                    <span>Back to Overview</span>
+                </a>
+                <div style="font-size:0.75rem;color:var(--text-tertiary);font-weight:600;letter-spacing:0.05em">
+                    ENTERPRISE v2.1
+                </div>
+            </div>
+
+            <!-- Brand header -->
             <div class="auth-brand">
+                <div class="auth-pill-badge">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                    <span>ObserveX Cloud Platform</span>
+                </div>
                 <div class="brand-icon">
                     <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <circle cx="24" cy="24" r="22" stroke="url(#brandGrad)" stroke-width="2.5" fill="none"/>
-                        <circle cx="24" cy="24" r="8" fill="url(#brandGrad)" opacity="0.8"/>
+                        <circle cx="24" cy="24" r="8" fill="url(#brandGrad)" opacity="0.85"/>
                         <circle cx="24" cy="10" r="3" fill="url(#brandGrad)"/>
                         <circle cx="36" cy="30" r="3" fill="url(#brandGrad)"/>
                         <circle cx="12" cy="30" r="3" fill="url(#brandGrad)"/>
@@ -42,6 +68,7 @@
             <!-- Login Form -->
             <div id="login-form" class="auth-card">
                 <h2 class="auth-title">Sign In</h2>
+                <p class="auth-subtitle">Access your organization's monitoring control plane</p>
                 <form id="login-form-element" autocomplete="on">
                     <div class="form-group">
                         <label for="login-input">Username or Email</label>
@@ -184,18 +211,35 @@
                     <button id="show-login" class="btn-link">Sign In</button>
                 </div>
             </div>
+
+            <!-- Trust / Security Notice -->
+            <div class="auth-security-notice">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span>256-Bit TLS · Multi-Tenant Isolated · Zero-Trust RBAC Architecture</span>
+            </div>
         </div>
     </div>
 
-    <!-- Main Application -->
+    <!-- Main Application Screen -->
     <div id="app-screen" class="screen hidden">
         <!-- Sidebar Navigation -->
         <nav id="sidebar" class="sidebar">
             <div class="sidebar-brand">
-                <span class="sidebar-logo">O<span class="brand-accent">X</span></span>
-                <span class="sidebar-name">ObserveX</span>
+                <div class="sidebar-brand-left">
+                    <svg class="sidebar-logo-icon" viewBox="0 0 48 48" fill="none">
+                        <circle cx="24" cy="24" r="22" stroke="#38BDF8" stroke-width="3" fill="none"/>
+                        <circle cx="24" cy="24" r="8" fill="#38BDF8"/>
+                        <circle cx="24" cy="10" r="3" fill="#38BDF8"/>
+                        <circle cx="36" cy="30" r="3" fill="#38BDF8"/>
+                        <circle cx="12" cy="30" r="3" fill="#38BDF8"/>
+                    </svg>
+                    <span class="sidebar-logo">Observe<span class="brand-accent">X</span></span>
+                </div>
+                <span class="sidebar-version-pill">CLOUD</span>
             </div>
+
             <div class="sidebar-nav">
+                <div class="nav-section-title">FLEET OBSERVABILITY</div>
                 <a href="#" class="nav-item active" data-page="dashboard" id="nav-dashboard">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                     <span>Dashboard</span>
@@ -207,6 +251,12 @@
                 <a href="#" class="nav-item" data-page="alerts" id="nav-alerts">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                     <span>Alerts</span>
+                </a>
+
+                <div class="nav-section-title">ADMINISTRATION</div>
+                <a href="#" class="nav-item" data-page="downloads" id="nav-downloads">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Agent Downloads</span>
                 </a>
                 <a href="#" class="nav-item admin-only" data-page="users" id="nav-users">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -221,6 +271,7 @@
                     <span>Assignments</span>
                 </a>
             </div>
+
             <div class="sidebar-footer">
                 <div class="user-info" id="user-info">
                     <div class="user-avatar" id="user-avatar">A</div>
@@ -237,16 +288,32 @@
 
         <!-- Main Content Area -->
         <main id="main-content" class="main-content">
-            <!-- Page header -->
+            <!-- Page Header -->
             <header id="page-header" class="page-header">
                 <div class="page-header-left">
+                    <div class="page-breadcrumbs">
+                        <span>ObserveX</span>
+                        <span>/</span>
+                        <span id="breadcrumb-current" style="color:var(--text-primary);font-weight:600">Dashboard</span>
+                    </div>
                     <h1 id="page-title" class="page-title">Dashboard</h1>
                     <p id="page-subtitle" class="page-subtitle">Organization overview</p>
                 </div>
-                <div class="page-header-right" id="page-actions"></div>
+                <div class="page-header-right">
+                    <div id="page-actions"></div>
+                    <div class="live-status-chip">
+                        <span class="live-status-dot"></span>
+                        <span>Live Telemetry</span>
+                    </div>
+                    <button id="theme-toggle-btn" class="theme-toggle-btn" title="Toggle Light / Dark mode" aria-label="Toggle theme">
+                        <svg class="theme-icon-sun hidden" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                        <svg class="theme-icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                        <span id="theme-toggle-text">Dark</span>
+                    </button>
+                </div>
             </header>
 
-            <!-- Dynamic page content -->
+            <!-- Dynamic Page Content -->
             <div id="page-content" class="page-content">
                 <!-- Pages rendered here by router -->
             </div>
@@ -257,13 +324,13 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Scripts -->
-    <script src="/static/js/api.js"></script>
-    <script src="/static/js/auth.js"></script>
-    <script src="/static/js/websocket.js"></script>
-    <script src="/static/js/components.js"></script>
-    <script src="/static/js/pages.js"></script>
-    <script src="/static/js/router.js"></script>
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/api.js?v=2.2.1"></script>
+    <script src="/static/js/auth.js?v=2.2.1"></script>
+    <script src="/static/js/websocket.js?v=2.2.1"></script>
+    <script src="/static/js/components.js?v=2.2.1"></script>
+    <script src="/static/js/pages.js?v=2.2.1"></script>
+    <script src="/static/js/router.js?v=2.2.1"></script>
+    <script src="/static/js/app.js?v=2.2.1"></script>
     <script>
         // Support deep linking to create-env form from landing page
         (function() {

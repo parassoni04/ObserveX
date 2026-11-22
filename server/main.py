@@ -20,7 +20,7 @@ Starting the server:
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -109,6 +109,24 @@ app.add_middleware(
 )
 
 
+# ── Security & Cache Headers Middleware ──
+
+@app.middleware("http")
+async def add_security_and_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    path = request.url.path
+    if path.startswith("/static/") or path in ("/", "/app", "/login", "/register"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
+    return response
+
+
 # ── Register Routers ──
 
 from server.routers.auth import router as auth_router
@@ -162,6 +180,7 @@ import os
 
 _project_root = os.path.dirname(os.path.dirname(__file__))
 _agent_exe_path = os.path.join(_project_root, "dist", "ObserveXAgent.exe")
+_agent_zip_path = os.path.join(_project_root, "dist", "ObserveXAgent-Windows.zip")
 
 
 @app.get("/api/v1/downloads/agent")
@@ -174,7 +193,23 @@ async def download_agent():
         _agent_exe_path,
         media_type="application/octet-stream",
         filename="ObserveXAgent.exe",
+        headers={"Content-Disposition": 'attachment; filename="ObserveXAgent.exe"'},
     )
+
+
+@app.get("/api/v1/downloads/agent/zip")
+async def download_agent_zip():
+    """Download the ObserveX Agent bundle as a zip archive."""
+    if not os.path.isfile(_agent_zip_path):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Agent zip bundle not found on server")
+    return FileResponse(
+        _agent_zip_path,
+        media_type="application/zip",
+        filename="ObserveXAgent-Windows.zip",
+        headers={"Content-Disposition": 'attachment; filename="ObserveXAgent-Windows.zip"'},
+    )
+
 
 
 # ── Serve Frontend SPA & Landing Page ──

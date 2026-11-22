@@ -129,17 +129,12 @@ async def run_agent():
         server_url = agent_settings.server.url
         await enroll_device(server_url, args.enroll, args.name)
     elif not agent_settings.is_enrolled:
-        # Not enrolled and no enrollment code given — try interactive
+        # Not enrolled and no enrollment code given — try interactive enrollment
         print("[Agent] Device is not enrolled with any server.")
-        if sys.stdin.isatty():
-            success = await interactive_enrollment()
-            if not success:
-                print("[Agent] Cannot start without enrollment. Exiting.")
-                sys.exit(1)
-        else:
-            # Non-interactive mode — cannot proceed without enrollment
-            print("[Agent] Not enrolled and running non-interactively. Exiting.")
-            print("[Agent] Enroll first: python -m agent.agent --server <URL> --enroll <CODE>")
+        success = await interactive_enrollment()
+        if not success:
+            print("\n[Agent] Device cannot stream metrics without enrollment.")
+            print("[Agent] Run with: ObserveXAgent.exe --server <URL> --enroll <CODE>")
             sys.exit(1)
 
     device_name = agent_settings.device.resolved_name
@@ -187,11 +182,26 @@ async def run_agent():
         if not sender.is_ws_connected:
             if not await sender.connect_ws():
                 if getattr(sender, "auth_rejected", False):
-                    print(f"\n[Agent] [ERROR] Server rejected device authentication (device_id={sender.device_id}).")
-                    print(f"[Agent] [INFO] The device credentials are invalid or this device is not registered in the server database.")
-                    print(f"[Agent] [INFO] Please re-enroll this device with an enrollment code from the ObserveX dashboard:")
-                    print(f"[Agent]    .\\ObserveXAgent.exe --enroll <ENROLLMENT_CODE>")
-                    print(f"[Agent]    or: python -m agent.agent --enroll <ENROLLMENT_CODE>\n")
+                    print(f"\n[Agent] [ERROR] Server rejected device credentials (device_id={sender.device_id}).")
+                    print("[Agent] [INFO] The server database was reset or this device was unassigned/removed.")
+                    re_enroll = False
+                    try:
+                        ans = input("\n[Agent] Would you like to re-enroll this device with a new code now? [Y/n]: ").strip().lower()
+                        if ans in ("", "y", "yes"):
+                            re_enroll = True
+                    except Exception:
+                        pass
+                    if re_enroll:
+                        success = await interactive_enrollment()
+                        if success:
+                            sender = AgentSender()
+                            sender.device_id = agent_settings.device.device_id
+                            heartbeat = HeartbeatManager(sender)
+                            sender.auth_rejected = False
+                            reconnect_backoff = 1.0
+                            continue
+                    print("\n[Agent] Exiting. You can re-enroll later with:")
+                    print("         ObserveXAgent.exe --enroll <ENROLLMENT_CODE>\n")
                     sys.exit(1)
 
                 print(f"[Agent] WebSocket reconnect in {reconnect_backoff:.0f}s...")
@@ -242,11 +252,40 @@ async def run_agent():
 
 
 def main():
+    exit_code = 0
     try:
         asyncio.run(run_agent())
     except KeyboardInterrupt:
         print("\n[Agent] Shutting down...")
+    except SystemExit as e:
+        exit_code = e.code if isinstance(e.code, int) else 1
+    except Exception as e:
+        exit_code = 1
+        print(f"\n[Agent Error] Unhandled exception: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        # Prevent the console window from closing immediately when run as a standalone executable
+        is_frozen = getattr(sys, "frozen", False)
+        if is_frozen or exit_code != 0:
+            print("\n" + "=" * 55)
+            print("  ObserveX Agent execution finished.")
+            print("  Press Enter to close this window...")
+            print("=" * 55)
+            try:
+                if os.name == "nt":
+                    try:
+                        with open("CONIN$", "r") as con:
+                            con.readline()
+                    except Exception:
+                        input()
+                else:
+                    input()
+            except Exception:
+                time.sleep(5)
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
     main()
+

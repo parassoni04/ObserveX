@@ -102,5 +102,6 @@ const API = (() => {
 
         // ── Downloads ──
         downloadAgentUrl: '/api/v1/downloads/agent',
+        downloadAgentZipUrl: '/api/v1/downloads/agent/zip',
     };
 })();

@@ -76,6 +76,94 @@
     --sidebar-collapsed: 64px;
 }
 
+/* ── Light Mode Color Theme ── */
+[data-theme="light"], body.light-theme {
+    /* Backgrounds */
+    --bg-primary: #F8FAFC;
+    --bg-secondary: #FFFFFF;
+    --bg-tertiary: #F1F5F9;
+    --bg-card: #FFFFFF;
+    --bg-card-hover: #F8FAFC;
+    --bg-elevated: #FFFFFF;
+    --bg-input: #FFFFFF;
+    --bg-sidebar: #FFFFFF;
+
+    /* Accents */
+    --accent-primary: #0284C7;
+    --accent-primary-hover: #0369A1;
+    --accent-primary-dim: rgba(2, 132, 199, 0.10);
+    --accent-secondary: #0284C7;
+
+    /* Semantic */
+    --success: #16A34A;
+    --success-dim: rgba(22, 163, 74, 0.10);
+    --warning: #D97706;
+    --warning-dim: rgba(217, 119, 6, 0.10);
+    --danger: #DC2626;
+    --danger-dim: rgba(220, 38, 38, 0.10);
+    --info: #2563EB;
+    --info-dim: rgba(37, 99, 235, 0.10);
+
+    /* Text */
+    --text-primary: #0F172A;
+    --text-secondary: #475569;
+    --text-tertiary: #64748B;
+    --text-muted: #94A3B8;
+
+    /* Borders */
+    --border-primary: #E2E8F0;
+    --border-secondary: #EDF2F7;
+    --border-accent: rgba(2, 132, 199, 0.35);
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.07);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.10);
+}
+
+[data-theme="light"] .btn-primary,
+body.light-theme .btn-primary {
+    color: #FFFFFF;
+    background: var(--accent-primary);
+}
+[data-theme="light"] .btn-primary:hover,
+body.light-theme .btn-primary:hover {
+    background: var(--accent-primary-hover);
+}
+[data-theme="light"] input,
+body.light-theme input {
+    background: #FFFFFF;
+    border-color: #CBD5E1;
+}
+
+/* ── Theme Toggle Button ── */
+.theme-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: var(--radius-full);
+    background: var(--bg-card);
+    border: 1px solid var(--border-primary);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    user-select: none;
+}
+.theme-toggle-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--border-accent);
+    background: var(--bg-card-hover);
+}
+.theme-icon-sun, .theme-icon-moon {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
+
+
 /* ── Reset & Base ── */
 *, *::before, *::after {
     box-sizing: border-box;

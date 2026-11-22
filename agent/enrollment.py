@@ -76,22 +76,48 @@ async def interactive_enrollment() -> bool:
 
     Returns True if enrollment succeeded, False otherwise.
     """
+    # Ensure standard input is available on Windows even when launched from Explorer
+    import os, sys
+    if os.name == "nt" and (sys.stdin is None or not hasattr(sys.stdin, "isatty") or not sys.stdin.isatty()):
+        try:
+            sys.stdin = open("CONIN$", "r")
+        except Exception:
+            pass
+
     print("\n" + "=" * 60)
-    print("  ObserveX Agent -- First-Time Enrollment")
+    print("  ObserveX Agent -- First-Time Device Enrollment")
     print("=" * 60)
-    print("\nThis agent is not yet enrolled with an ObserveX server.")
-    print("You will need a Server URL and an Enrollment Code from your administrator.\n")
+    print("\nThis device is not yet enrolled with an ObserveX server.")
+    print("Please provide the Server URL and an Enrollment Code from your admin dashboard.\n")
 
     try:
         default_url = agent_settings.server.url or "http://localhost:8000"
-        server_url = input(f"  Server URL [{default_url}]: ").strip() or default_url
-
-        enrollment_code = input("  Enrollment Code (e.g. OX-7F29-A82D): ").strip()
-        if not enrollment_code:
-            print("[Enrollment] [ERROR] Enrollment code is required.")
+        try:
+            server_input = input(f"  Server URL [{default_url}]: ").strip()
+        except EOFError:
+            print("\n[Enrollment] Standard input not available. Cannot enroll interactively.")
             return False
 
-        device_name = input(f"  Device Name [{platform.node()}]: ").strip() or None
+        server_url = server_input or default_url
+
+        enrollment_code = ""
+        for _ in range(3):
+            try:
+                enrollment_code = input("  Enrollment Code (e.g. OX-7F29-A82D): ").strip()
+            except EOFError:
+                return False
+            if enrollment_code:
+                break
+            print("  [Notice] Enrollment code is required. Please paste or type your code.")
+
+        if not enrollment_code:
+            print("\n[Enrollment] [ERROR] No enrollment code provided.")
+            return False
+
+        try:
+            device_name = input(f"  Device Name [{platform.node()}]: ").strip() or None
+        except EOFError:
+            device_name = None
 
         await enroll_device(server_url, enrollment_code, device_name)
         return True
@@ -101,5 +127,5 @@ async def interactive_enrollment() -> bool:
         return False
     except Exception as e:
         print(f"\n[Enrollment] [ERROR] Enrollment failed: {e}")
-        print("[Enrollment] Check the server URL and enrollment code, then try again.")
+        print("[Enrollment] Please verify the server is running and the enrollment code is valid.")
         return False
